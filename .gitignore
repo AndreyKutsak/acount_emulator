@@ -2,3 +2,9 @@ node_modules/
 dist/
 .env
 *.log
+
+# Runtime state of the automation (persistent browser profiles, screenshots, MCP sessions)
+backend/profiles/
+backend/screenshots/
+backend/storage/
+backend/uploads/auth-debug/

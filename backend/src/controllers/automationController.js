@@ -13,11 +13,14 @@ const publishStrategies = require('../services/publishStrategies');
 const { downloadAllToTempFiles, cleanupTempFiles } = require('../services/tempDownload');
 const { USER_AGENT_PRESETS } = require('../services/userAgentPresets');
 const { scheduleRest, isResting } = require('../services/humanize');
+const proxyManager = require('../services/proxyManager');
+const tlsClient = require('../services/tlsClient');
 
 function toSafeAccount(account) {
   const obj = account.toObject();
   delete obj.passwordEncrypted;
   delete obj.threadsSessionEncrypted;
+  delete obj.proxyConfig;
   return obj;
 }
 
@@ -46,6 +49,20 @@ exports.listUserAgentPresets = (req, res) => {
   res.json(USER_AGENT_PRESETS);
 };
 
+exports.health = (req, res) => {
+  res.json({
+    engine: process.env.BROWSER_ENGINE || 'playwright',
+    headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
+    browser: 'ok',
+    proxy: proxyManager.enabled()
+      ? { enabled: true, endpoint: process.env.PROXY_ENDPOINT }
+      : { enabled: false, note: 'no residential proxy — using direct/VPN egress' },
+    tls: tlsClient.available()
+      ? { enabled: true, impersonate: process.env.TLS_IMPERSONATE || 'chrome124' }
+      : { enabled: false, note: 'impersonated-fetch not installed — using plain fetch' },
+  });
+};
+
 exports.checkAuth = async (req, res, next) => {
   try {
     const account = await SocialAccount.findById(req.params.accountId);
@@ -72,6 +89,7 @@ exports.checkAuth = async (req, res, next) => {
       accountId: account._id.toString(),
       label: 'auth-check',
       userAgent: req.body?.userAgent || account.userAgent || null,
+      profileId: account.profileId || null,
     });
 
     let loggedIn = false;
@@ -208,6 +226,7 @@ exports.startSession = async (req, res, next) => {
       vpnSessionId: vpnSession ? vpnSession._id.toString() : null,
       label: label || '',
       userAgent: userAgent || account.userAgent || null,
+      profileId: account.profileId || null,
     });
 
     let loggedIn = false;
@@ -408,6 +427,7 @@ exports.publishPostForAccount = async (req, res) => {
       accountId: account._id.toString(),
       label: 'publish-now',
       userAgent: userAgent || account.userAgent || null,
+      profileId: account.profileId || null,
     });
 
     let tempPaths = [];
@@ -490,6 +510,7 @@ exports.refreshMetrics = async (req, res) => {
       accountId: account._id.toString(),
       label: 'refresh-metrics',
       userAgent: userAgent || account.userAgent || null,
+      profileId: account.profileId || null,
     });
 
     try {

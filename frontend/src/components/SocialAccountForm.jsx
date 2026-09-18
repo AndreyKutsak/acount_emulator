@@ -10,6 +10,7 @@ const initial = {
   vpnServer: '',
   notes: '',
   userAgent: '',
+  profileId: 'windows_chrome',
 };
 
 export default function SocialAccountForm({ onCreate }) {
@@ -75,6 +76,15 @@ export default function SocialAccountForm({ onCreate }) {
                 {s.name} ({s.host})
               </option>
             ))}
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label">Fingerprint профіль</span>
+          <select name="profileId" value={form.profileId} onChange={handleChange}>
+            <option value="windows_chrome">Windows — Chrome</option>
+            <option value="macos_safari">macOS — Safari</option>
+            <option value="iphone_13">iPhone 13 — Safari</option>
+            <option value="android_samsung_s23">Samsung S23 — Chrome</option>
           </select>
         </label>
         <label className="field field-wide">

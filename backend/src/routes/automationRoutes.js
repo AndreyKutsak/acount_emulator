@@ -14,11 +14,13 @@ const {
   listThreadsActions,
   threadsManualAction,
   openManualBrowser,
+  health,
 } = require('../controllers/automationController');
 
 const router = express.Router();
 
 router.get('/user-agent-presets', listUserAgentPresets);
+router.get('/health', health);
 router.get('/threads-actions', listThreadsActions);
 router.post('/accounts/:accountId/check-auth', checkAuth);
 router.post('/accounts/:accountId/threads-action', threadsManualAction);

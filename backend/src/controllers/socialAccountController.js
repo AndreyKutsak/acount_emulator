@@ -6,6 +6,8 @@ function toSafeAccount(account) {
   delete obj.passwordEncrypted;
   // Encrypted threads-bot session cookies — internal reuse only, never sent to the client.
   delete obj.threadsSessionEncrypted;
+  // Proxy config may contain provider credentials — never sent to the client.
+  delete obj.proxyConfig;
   return obj;
 }
 
@@ -35,7 +37,7 @@ exports.getAccount = async (req, res, next) => {
 
 exports.createAccount = async (req, res, next) => {
   try {
-    const { platform, displayName, username, password, vpnServer, notes, userAgent } = req.body;
+    const { platform, displayName, username, password, vpnServer, notes, userAgent, profileId, proxyConfig } = req.body;
     if (!username || !password) {
       return res.status(400).json({ message: 'username and password are required' });
     }
@@ -47,6 +49,8 @@ exports.createAccount = async (req, res, next) => {
       vpnServer: vpnServer || null,
       notes,
       userAgent: userAgent || '',
+      profileId: profileId || 'windows_chrome',
+      proxyConfig: proxyConfig || null,
     });
     res.status(201).json(toSafeAccount(account));
   } catch (err) {
@@ -56,9 +60,11 @@ exports.createAccount = async (req, res, next) => {
 
 exports.updateAccount = async (req, res, next) => {
   try {
-    const { platform, displayName, username, password, vpnServer, notes, userAgent } = req.body;
+    const { platform, displayName, username, password, vpnServer, notes, userAgent, profileId, proxyConfig } = req.body;
     const update = { platform, displayName, username, vpnServer, notes };
     if (userAgent !== undefined) update.userAgent = userAgent;
+    if (profileId !== undefined) update.profileId = profileId;
+    if (proxyConfig !== undefined) update.proxyConfig = proxyConfig;
     if (password) update.passwordEncrypted = encrypt(password);
 
     const account = await SocialAccount.findByIdAndUpdate(req.params.id, update, {
