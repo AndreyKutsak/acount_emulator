@@ -1,6 +1,12 @@
+const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
-const { chromium } = require('playwright');
 const stealth = require('./stealth');
+const profileManager = require('./profileManager');
+const proxyManager = require('./proxyManager');
+const { loadEngine } = require('./automation/browser');
+
+const { chromium } = loadEngine();
 
 // In-memory registry of live browser sessions. Each session owns its own
 // browser instance so that different social accounts never share cookies,
@@ -9,6 +15,7 @@ const sessions = new Map();
 
 const HEADLESS = process.env.PLAYWRIGHT_HEADLESS !== 'false';
 const NAV_TIMEOUT_MS = Number(process.env.PLAYWRIGHT_TIMEOUT_MS) || 30000;
+const PROFILES_DIR = path.join(__dirname, '..', '..', process.env.PROFILES_DIR || 'profiles');
 
 // Playwright's own default UA otherwise reveals "HeadlessChrome" on some versions —
 // use a realistic desktop Chrome string whenever an account has no user agent pinned.
@@ -23,21 +30,34 @@ async function createSession({
   label = '',
   userAgent = null,
   headless = null,
+  profileId = null,
 }) {
   const id = crypto.randomUUID();
-  const ua = userAgent || DEFAULT_USER_AGENT;
-  const channel = stealth.detectChromeChannel();
-  const browser = await chromium.launch({
+  const profile = profileManager.getProfile(profileId);
+  const ua = userAgent || profile.userAgent || DEFAULT_USER_AGENT;
+  const proxy = proxyManager.buildProxy(accountId);
+  const userDataDir = path.join(PROFILES_DIR, String(accountId || `session-${id}`));
+  fs.mkdirSync(userDataDir, { recursive: true });
+
+  const context = await chromium.launchPersistentContext(userDataDir, {
     headless: headless ?? HEADLESS,
-    ...(channel ? { channel } : {}),
+    ...(stealth.detectChromeChannel() ? { channel: 'chrome' } : {}),
     args: stealth.launchArgs(),
-  });
-  const context = await browser.newContext({
+    ...(proxy ? { proxy: { server: proxy.server, username: proxy.username, password: proxy.password } } : {}),
     userAgent: ua,
-    ...stealth.contextOptions(ua),
+    viewport: profile.viewport,
+    screen: profile.screen,
+    deviceScaleFactor: profile.deviceScaleFactor,
+    isMobile: profile.isMobile,
+    hasTouch: profile.hasTouch,
+    locale: profile.locale,
+    timezoneId: profile.timezoneId,
+    colorScheme: 'light',
   });
   await context.addInitScript(stealth.initScript());
-  const page = await context.newPage();
+  await context.addInitScript(profileManager.profileInitScript(profileId));
+
+  const page = context.pages()[0] || (await context.newPage());
   page.setDefaultTimeout(NAV_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
 
@@ -47,8 +67,10 @@ async function createSession({
     vpnServerId,
     vpnSessionId,
     label,
-    userAgent: userAgent || DEFAULT_USER_AGENT,
-    browser,
+    userAgent: ua,
+    profileId: profileId || profileManager.DEFAULT_PROFILE_ID,
+    proxy: proxy ? { server: proxy.endpoint } : null,
+    browser: context.browser(),
     context,
     page,
     createdAt: new Date(),

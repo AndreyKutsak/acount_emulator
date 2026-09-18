@@ -5,6 +5,8 @@ const { chromium } = require('playwright-core');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const stealth = require('./stealth');
+const profileManager = require('./profileManager');
+const proxyManager = require('./proxyManager');
 
 // The Playwright MCP server is spawned as a child process per session and driven
 // over stdio JSON-RPC via the MCP SDK client — this is the "MCP" transport that
@@ -15,6 +17,7 @@ const CLI_PATH = path.dirname(require.resolve('@playwright/mcp/package.json')) +
 
 const SESSION_STATE_DIR = path.join(__dirname, '..', '..', 'storage', 'mcp-sessions');
 const SCREENSHOT_DIR = path.join(__dirname, '..', '..', 'screenshots');
+const PROFILES_DIR = path.join(__dirname, '..', '..', process.env.PROFILES_DIR || 'profiles');
 fs.mkdirSync(SESSION_STATE_DIR, { recursive: true });
 
 const sessions = new Map();
@@ -32,16 +35,22 @@ function resolveChromePath() {
 // storageState: an optional Playwright storage-state object ({cookies, origins})
 // to restore into the new browser context — this is how a saved login session is
 // carried into a fresh MCP-spawned browser instead of logging in from scratch.
-async function startSession({ accountId = 'unknown', headless = true, storageState = null, userAgent = null } = {}) {
+async function startSession({ accountId = 'unknown', headless = true, storageState = null, userAgent = null, profileId = null } = {}) {
   const id = crypto.randomUUID();
   const outputDir = path.join(SCREENSHOT_DIR, String(accountId));
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const args = ['--isolated', '--no-sandbox', '--caps=storage', '--output-dir', outputDir];
+  const profile = profileManager.getProfile(profileId);
+  const ua = userAgent || profile.userAgent;
+  const { width, height } = profile.viewport;
+  const proxy = proxyManager.buildProxy(accountId);
+  const profileDir = path.join(PROFILES_DIR, String(accountId));
+  fs.mkdirSync(profileDir, { recursive: true });
 
-  // Prefer the real Chrome channel over the bundled Chromium — a branded build with
-  // its own UA-Client-Hints/fingerprint surface is a stronger baseline than Playwright's
-  // Chromium for evading simple automation checks.
+  // Persistent profile (cookies/localStorage/history) + real Chrome channel.
+  const args = ['--no-sandbox', '--caps=storage', '--output-dir', outputDir];
+  args.push('--user-data-dir', profileDir);
+
   const channel = stealth.detectChromeChannel();
   if (channel) {
     args.push('--browser', channel);
@@ -50,10 +59,15 @@ async function startSession({ accountId = 'unknown', headless = true, storageSta
     if (chromePath) args.push('--executable-path', chromePath);
   }
 
+  if (proxy) {
+    const creds = `${proxy.username}:${proxy.password}`;
+    args.push('--proxy-server', `http://${creds}@${proxy.endpoint}`);
+  }
+
   args.push('--init-script', stealth.initScriptPath);
-  args.push('--viewport-size', stealth.mcpViewportSize(userAgent));
+  args.push('--viewport-size', `${width},${height}`);
   if (headless) args.push('--headless');
-  if (userAgent) args.push('--user-agent', userAgent);
+  args.push('--user-agent', ua);
 
   let storageStatePath = null;
   if (storageState) {
