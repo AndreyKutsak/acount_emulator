@@ -1,3 +1,5 @@
+const { humanType, humanClick, randomScroll } = require('./humanize');
+
 const DEFAULT_STRATEGY = {
   loginUrl: null,
   usernameSelector: 'input[name="username"], input[name="email"], input[type="email"]',
@@ -58,7 +60,9 @@ async function login(page, { platform, username, password, loginUrl, timeoutMs =
   }
 
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
-  await page.fill(strategy.usernameSelector, username, { timeout: timeoutMs });
+  await page.waitForSelector(strategy.usernameSelector, { timeout: timeoutMs }).catch(() => {});
+  await humanType(page, strategy.usernameSelector, username);
+  await randomScroll(page, { minScrolls: 1, maxScrolls: 2, maxDelta: 300 });
 
   // Some flows (Google, Twitter) require pressing "Next" before the password field appears.
   const passwordVisible = await page
@@ -71,8 +75,8 @@ async function login(page, { platform, username, password, loginUrl, timeoutMs =
     await page.waitForSelector(strategy.passwordSelector, { timeout: timeoutMs }).catch(() => {});
   }
 
-  await page.fill(strategy.passwordSelector, password, { timeout: timeoutMs });
-  await page.click(strategy.submitSelector, { timeout: timeoutMs }).catch(async () => {
+  await humanType(page, strategy.passwordSelector, password);
+  await humanClick(page, strategy.submitSelector).catch(async () => {
     await page.keyboard.press('Enter');
   });
 

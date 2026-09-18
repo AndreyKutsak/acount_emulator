@@ -89,8 +89,7 @@ async function publishToAccount(post, account, entry) {
     const session = await browserService.createSession({
       accountId: account._id.toString(),
       label: "scheduled-publish",
-      userAgent: account.userAgent || null,
-    });
+      userAgent: account.userAgent || null,      profileId: account.profileId || null,    });
 
     let tempPaths = [];
     try {
@@ -143,7 +142,7 @@ async function publishDuePosts() {
   const due = await Post.find({
     scheduledAt: { $ne: null, $lte: new Date() },
     accounts: { $elemMatch: { status: "pending" } },
-  }).populate("accounts.account", "platform username displayName userAgent");
+  }).populate('accounts.account', 'platform username displayName userAgent profileId');
 
   const summary = [];
   for (const post of due) {
@@ -182,7 +181,7 @@ async function publishDuePosts() {
 async function refreshPublishedMetrics() {
   const posts = await Post.find({
     accounts: { $elemMatch: { status: "published", postUrl: { $ne: "" } } },
-  }).populate("accounts.account", "platform username displayName userAgent");
+  }).populate('accounts.account', 'platform username displayName userAgent profileId');
 
   const summary = [];
   for (const post of posts) {
@@ -202,8 +201,7 @@ async function refreshPublishedMetrics() {
       const session = await browserService.createSession({
         accountId: account._id.toString(),
         label: "scheduled-metrics",
-        userAgent: account.userAgent || null,
-      });
+        userAgent: account.userAgent || null,        profileId: account.profileId || null,      });
       try {
         try {
           const password = decrypt(account.passwordEncrypted);

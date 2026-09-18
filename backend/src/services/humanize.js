@@ -26,9 +26,70 @@ function isResting(account) {
   return Boolean(account?.restUntil && new Date(account.restUntil).getTime() > Date.now());
 }
 
+// --- Mouse / typing / scrolling (human-like micro-behavior) ---
+// Uses ghost-cursor (if installed) for curved mouse movement, with a safe fallback
+// to Playwright's own click when the library is missing or fails — so login flows
+// never break just because the optional dependency changed.
+
+function humanCursor(page) {
+  try {
+    // eslint-disable-next-line global-require
+    const { createCursor } = require('ghost-cursor');
+    return createCursor(page);
+  } catch {
+    return null;
+  }
+}
+
+async function humanMoveTo(page, selector) {
+  const cursor = humanCursor(page);
+  if (cursor) {
+    try {
+      await cursor.move(selector, { paddingPercentage: 15 });
+      return;
+    } catch {
+      // fall through to a plain click
+    }
+  }
+}
+
+// Move the mouse to the element with a human path, then click via Playwright
+// (reliable actionability wait) — the movement is the human part, the click stays safe.
+async function humanClick(page, selector) {
+  await humanMoveTo(page, selector);
+  await page.locator(selector).first().click();
+}
+
+// Click into the field, then type character-by-character with varied delays.
+async function humanType(page, selector, text) {
+  await humanMoveTo(page, selector);
+  await page.locator(selector).first().click();
+  for (const ch of text) {
+    await page.keyboard.type(ch);
+    await sleep(randomInt(30, 120));
+  }
+}
+
+// A few organic scrolls before/after an action — instant, zero-movement pages are
+// a classic automation tell, so this adds the small "browsing" motions a person makes.
+async function randomScroll(page, { minScrolls = 2, maxScrolls = 5, maxDelta = 600 } = {}) {
+  const scrolls = randomInt(minScrolls, maxScrolls);
+  for (let i = 0; i < scrolls; i++) {
+    await page.mouse.wheel(0, randomInt(200, maxDelta));
+    await sleep(randomInt(400, 1600));
+  }
+  if (Math.random() < 0.4) {
+    await page.mouse.wheel(0, -randomInt(100, 300));
+    await sleep(randomInt(300, 900));
+  }
+}
+
 module.exports = {
   randomInt,
   sleep,
   scheduleRest,
   isResting,
+  humanClick,
+  humanType,
+  randomScroll,
 };

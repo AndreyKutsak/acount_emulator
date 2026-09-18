@@ -13,6 +13,13 @@ const socialAccountSchema = new mongoose.Schema(
     vpnServer: { type: mongoose.Schema.Types.ObjectId, ref: 'VpnServer', default: null },
     notes: { type: String, default: '' },
     userAgent: { type: String, default: '' },
+    // Stable fingerprint profile id (see services/profileManager.js). One account
+    // keeps one profile forever — consistent fingerprint instead of a fresh random
+    // one per session.
+    profileId: { type: String, default: 'windows_chrome' },
+    // Optional per-account proxy override. May contain credentials, so it is
+    // stripped from every client-facing response (toSafeAccount).
+    proxyConfig: { type: mongoose.Schema.Types.Mixed, default: null },
     authStatus: {
       type: String,
       enum: ['unknown', 'authorized', 'failed', 'blocked'],

@@ -98,6 +98,7 @@ async function withSession(account, { headless = true } = {}, fn) {
     headless,
     storageState: loadStoredSession(account),
     userAgent: account.userAgent || null,
+    profileId: account.profileId || null,
   });
   try {
     return await fn(session);
@@ -266,6 +267,7 @@ async function openManualBrowser(account, password) {
     headless: false,
     storageState: loadStoredSession(account),
     userAgent: account.userAgent || null,
+    profileId: account.profileId || null,
   });
   await ensureLoggedIn(session, account, password);
   await mcpBrowserService.callTool(session, 'browser_navigate', { url: 'https://www.threads.com/' });
