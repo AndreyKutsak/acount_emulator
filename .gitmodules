@@ -1,0 +1,3 @@
+[submodule "backend/ManyFaces"]
+	path = backend/ManyFaces
+	url = https://github.com/chentaymane/ManyFaces.git
