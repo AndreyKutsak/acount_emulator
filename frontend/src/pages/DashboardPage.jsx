@@ -3,6 +3,7 @@ import { fetchStats } from "../api/stats";
 import { errorMessage } from "../api/client";
 import { formatDate } from "../components/StatusBadge";
 import PostStatusBadge from "../components/PostStatusBadge";
+import EmulatorControl from "../components/EmulatorControl";
 
 const PLATFORM_LABELS = {
   instagram: "Instagram",
@@ -75,6 +76,7 @@ export default function DashboardPage() {
   }, []);
 
   if (loading) return <p className="muted">Завантаження...</p>;
+  if (!stats) return <p className="error">{error || "Немає даних"}</p>;
 
   return (
     <div>
@@ -89,6 +91,10 @@ export default function DashboardPage() {
       </div>
 
       {error && <p className="error">{error}</p>}
+
+      <div style={{ marginBottom: 16 }}>
+        <EmulatorControl />
+      </div>
 
       <div className="stat-grid">
         <StatCard

@@ -1,23 +1,37 @@
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const { chromium } = require('playwright-core');
-const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
-const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
-const stealth = require('./stealth');
-const profileManager = require('./profileManager');
-const proxyManager = require('./proxyManager');
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const { chromium } = require("playwright-core");
+const { Client } = require("@modelcontextprotocol/sdk/client/index.js");
+const {
+  StdioClientTransport,
+} = require("@modelcontextprotocol/sdk/client/stdio.js");
+const stealth = require("./stealth");
+const profileManager = require("./profileManager");
+const proxyManager = require("./proxyManager");
 
 // The Playwright MCP server is spawned as a child process per session and driven
 // over stdio JSON-RPC via the MCP SDK client — this is the "MCP" transport that
 // replaces threads-bot's direct private-API calls. Every action becomes a tool
 // call (browser_navigate, browser_click, browser_type, …) instead of a page.*()
 // call, but it's the same official, non-anti-detect Playwright/Chromium underneath.
-const CLI_PATH = path.dirname(require.resolve('@playwright/mcp/package.json')) + '/cli.js';
+const CLI_PATH =
+  path.dirname(require.resolve("@playwright/mcp/package.json")) + "/cli.js";
 
-const SESSION_STATE_DIR = path.join(__dirname, '..', '..', 'storage', 'mcp-sessions');
-const SCREENSHOT_DIR = path.join(__dirname, '..', '..', 'screenshots');
-const PROFILES_DIR = path.join(__dirname, '..', '..', process.env.PROFILES_DIR || 'profiles');
+const SESSION_STATE_DIR = path.join(
+  __dirname,
+  "..",
+  "..",
+  "storage",
+  "mcp-sessions",
+);
+const SCREENSHOT_DIR = path.join(__dirname, "..", "..", "screenshots");
+const PROFILES_DIR = path.join(
+  __dirname,
+  "..",
+  "..",
+  process.env.PROFILES_DIR || "profiles",
+);
 fs.mkdirSync(SESSION_STATE_DIR, { recursive: true });
 
 const sessions = new Map();
@@ -35,7 +49,13 @@ function resolveChromePath() {
 // storageState: an optional Playwright storage-state object ({cookies, origins})
 // to restore into the new browser context — this is how a saved login session is
 // carried into a fresh MCP-spawned browser instead of logging in from scratch.
-async function startSession({ accountId = 'unknown', headless = true, storageState = null, userAgent = null, profileId = null } = {}) {
+async function startSession({
+  accountId = "unknown",
+  headless = true,
+  storageState = null,
+  userAgent = null,
+  profileId = null,
+} = {}) {
   const id = crypto.randomUUID();
   const outputDir = path.join(SCREENSHOT_DIR, String(accountId));
   fs.mkdirSync(outputDir, { recursive: true });
@@ -48,52 +68,62 @@ async function startSession({ accountId = 'unknown', headless = true, storageSta
   fs.mkdirSync(profileDir, { recursive: true });
 
   // Persistent profile (cookies/localStorage/history) + real Chrome channel.
-  const args = ['--no-sandbox', '--caps=storage', '--output-dir', outputDir];
-  args.push('--user-data-dir', profileDir);
+  const args = ["--no-sandbox", "--caps=storage", "--output-dir", outputDir];
+  args.push("--user-data-dir", profileDir);
 
   const channel = stealth.detectChromeChannel();
   if (channel) {
-    args.push('--browser', channel);
+    args.push("--browser", channel);
   } else {
     const chromePath = resolveChromePath();
-    if (chromePath) args.push('--executable-path', chromePath);
+    if (chromePath) args.push("--executable-path", chromePath);
   }
 
   if (proxy) {
     const creds = `${proxy.username}:${proxy.password}`;
-    args.push('--proxy-server', `http://${creds}@${proxy.endpoint}`);
+    args.push("--proxy-server", `http://${creds}@${proxy.endpoint}`);
   }
 
-  args.push('--init-script', stealth.initScriptPath);
-  args.push('--viewport-size', `${width},${height}`);
-  if (headless) args.push('--headless');
-  args.push('--user-agent', ua);
+  args.push("--init-script", stealth.initScriptPath);
+  args.push("--viewport-size", `${width},${height}`);
+  if (headless) args.push("--headless");
+  args.push("--user-agent", ua);
 
   let storageStatePath = null;
   if (storageState) {
     storageStatePath = path.join(SESSION_STATE_DIR, `${id}-in.json`);
     fs.writeFileSync(storageStatePath, JSON.stringify(storageState));
-    args.push('--storage-state', storageStatePath);
+    args.push("--storage-state", storageStatePath);
   }
 
-  const transport = new StdioClientTransport({ command: process.execPath, args: [CLI_PATH, ...args] });
-  const client = new Client({ name: 'treds-automation', version: '1.0.0' });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [CLI_PATH, ...args],
+  });
+  const client = new Client({ name: "treds-automation", version: "1.0.0" });
   await client.connect(transport);
 
-  const session = { id, accountId: String(accountId), client, outputDir, storageStatePath, createdAt: new Date() };
+  const session = {
+    id,
+    accountId: String(accountId),
+    client,
+    outputDir,
+    storageStatePath,
+    createdAt: new Date(),
+  };
   sessions.set(id, session);
   return session;
 }
 
 function toolText(result) {
-  return (result.content || []).map((c) => c.text || '').join('\n');
+  return (result.content || []).map((c) => c.text || "").join("\n");
 }
 
 async function callTool(session, name, args = {}) {
   const result = await session.client.callTool({ name, arguments: args });
   const text = toolText(result);
   if (result.isError) {
-    throw new Error(`MCP tool "${name}" failed: ${text || 'unknown error'}`);
+    throw new Error(`MCP tool "${name}" failed: ${text || "unknown error"}`);
   }
   return text;
 }
@@ -120,8 +150,8 @@ function extractEvalResult(resultText) {
 // (a fresh login doesn't need to happen on every automation run).
 async function saveStorageState(session) {
   const exportPath = path.join(SESSION_STATE_DIR, `${session.id}-out.json`);
-  await callTool(session, 'browser_storage_state', { filename: exportPath });
-  const raw = fs.readFileSync(exportPath, 'utf8');
+  await callTool(session, "browser_storage_state", { filename: exportPath });
+  const raw = fs.readFileSync(exportPath, "utf8");
   fs.unlink(exportPath, () => {});
   return JSON.parse(raw);
 }

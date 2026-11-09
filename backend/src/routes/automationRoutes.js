@@ -1,4 +1,4 @@
-const express = require('express');
+const express = require("express");
 const {
   listSessions,
   startSession,
@@ -14,24 +14,26 @@ const {
   listThreadsActions,
   threadsManualAction,
   openManualBrowser,
+  saveManualAuth,
   health,
-} = require('../controllers/automationController');
+} = require("../controllers/automationController");
 
 const router = express.Router();
 
-router.get('/user-agent-presets', listUserAgentPresets);
-router.get('/health', health);
-router.get('/threads-actions', listThreadsActions);
-router.post('/accounts/:accountId/check-auth', checkAuth);
-router.post('/accounts/:accountId/threads-action', threadsManualAction);
-router.post('/accounts/:accountId/open-browser', openManualBrowser);
-router.post('/publish', publishPostForAccount);
-router.post('/refresh-metrics', refreshMetrics);
-router.route('/sessions').get(listSessions).post(startSession);
-router.delete('/sessions/:sessionId', stopSession);
-router.post('/sessions/:sessionId/navigate', navigate);
-router.post('/sessions/:sessionId/extract', extract);
-router.post('/sessions/:sessionId/scrape-post', scrapePost);
-router.post('/sessions/:sessionId/publish-post', publishPost);
+router.get("/user-agent-presets", listUserAgentPresets);
+router.get("/health", health);
+router.get("/threads-actions", listThreadsActions);
+router.post("/accounts/:accountId/check-auth", checkAuth);
+router.post("/accounts/:accountId/threads-action", threadsManualAction);
+router.post("/accounts/:accountId/open-browser", openManualBrowser);
+router.post("/publish", publishPostForAccount);
+router.post("/refresh-metrics", refreshMetrics);
+router.route("/sessions").get(listSessions).post(startSession);
+router.delete("/sessions/:sessionId", stopSession);
+router.post("/sessions/:sessionId/save-auth", saveManualAuth);
+router.post("/sessions/:sessionId/navigate", navigate);
+router.post("/sessions/:sessionId/extract", extract);
+router.post("/sessions/:sessionId/scrape-post", scrapePost);
+router.post("/sessions/:sessionId/publish-post", publishPost);
 
 module.exports = router;

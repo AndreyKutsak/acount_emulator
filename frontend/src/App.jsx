@@ -7,7 +7,10 @@ import VpnServersPage from "./pages/VpnServersPage";
 import SocialAccountsPage from "./pages/SocialAccountsPage";
 import PostsPage from "./pages/PostsPage";
 import ThreadsCommentsPage from "./pages/ThreadsCommentsPage";
+import TelegramPage from "./pages/TelegramPage";
 import DashboardPage from "./pages/DashboardPage";
+import AndroidPage from "./pages/AndroidPage";
+import HelpPage from "./pages/HelpPage";
 
 function ItemsPage() {
   const [items, setItems] = useState([]);
@@ -50,7 +53,7 @@ function ItemsPage() {
     <div>
       <div className="page-header">
         <div>
-          <h2>Items</h2>
+          <h2>Елементи</h2>
           <p className="page-subtitle">Службовий список для тестових записів</p>
         </div>
       </div>
@@ -65,6 +68,7 @@ function ItemsPage() {
 
 const TABS = [
   { id: "dashboard", label: "Огляд", Component: DashboardPage },
+  { id: "help", label: "📘 Інструкція", Component: HelpPage },
   { id: "posts", label: "Пости", Component: PostsPage },
   {
     id: "threads-comments",
@@ -72,8 +76,10 @@ const TABS = [
     Component: ThreadsCommentsPage,
   },
   { id: "accounts", label: "Акаунти", Component: SocialAccountsPage },
+  { id: "telegram", label: "Telegram", Component: TelegramPage },
+  { id: "android", label: "Android емулятор", Component: AndroidPage },
   { id: "vpn", label: "VPN сервери", Component: VpnServersPage },
-  { id: "items", label: "Items", Component: ItemsPage },
+  { id: "items", label: "Елементи", Component: ItemsPage },
 ];
 
 export default function App() {

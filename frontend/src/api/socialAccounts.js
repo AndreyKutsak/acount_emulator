@@ -27,5 +27,11 @@ export const runThreadsAction = (id, action, payload) =>
 export const openAccountBrowser = (id) =>
   api.post(`/automation/accounts/${id}/open-browser`).then((res) => res.data);
 
+export const openAccountBrowserManual = (id) =>
+  api.post(`/automation/accounts/${id}/open-browser`, { manual: true }).then((res) => res.data);
+
+export const saveBrowserAuth = (sessionId, accountId) =>
+  api.post(`/automation/sessions/${sessionId}/save-auth`, { accountId }).then((res) => res.data);
+
 export const closeBrowserSession = (sessionId) =>
   api.delete(`/automation/sessions/${sessionId}`).then((res) => res.data);

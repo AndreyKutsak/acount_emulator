@@ -10,6 +10,8 @@ const automationRoutes = require("./routes/automationRoutes");
 const threadsCommentRoutes = require("./routes/threadsCommentRoutes");
 const statsRoutes = require("./routes/statsRoutes");
 const schedulerRoutes = require("./routes/schedulerRoutes");
+const telegramRoutes = require("./routes/telegramRoutes");
+const androidRoutes = require("./routes/androidRoutes");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
@@ -29,6 +31,8 @@ app.use("/api/automation", automationRoutes);
 app.use("/api/threads-comments", threadsCommentRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/scheduler", schedulerRoutes);
+app.use("/api/telegram", telegramRoutes);
+app.use("/api/android", androidRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -7,6 +7,8 @@ const browserService = require("./browserService");
 const loginStrategies = require("./loginStrategies");
 const publishStrategies = require("./publishStrategies");
 const scrapeStrategies = require("./scrapeStrategies");
+const androidBridge = require("./androidBridgeService");
+const androidOrchestrator = require("./androidOrchestrator");
 const { downloadAllToTempFiles, cleanupTempFiles } = require("./tempDownload");
 const { captureAuthDebug } = require("./authDebugService");
 const { isResting, scheduleRest, sleep, randomInt } = require("./humanize");
@@ -27,6 +29,17 @@ let lastSummary = null;
 
 const ENABLED = process.env.SCHEDULER_ENABLED !== "false";
 const INTERVAL_MS = Number(process.env.SCHEDULER_INTERVAL_MS) || 60 * 1000;
+// Коли true — пости для Threads публікуються через нативний застосунок в Android-
+// емуляторі (міст uiautomator2), а не через веб. Потрібні запущений ManyFaces-
+// емулятор, Android-міст (automation/bridge.py) і авторизований Threads у застосунку.
+const ANDROID_THREADS_POSTING = process.env.ANDROID_THREADS_POSTING === "true";
+// Запобіжник: якщо false — планувальник ЗАПОВНЮЄ композер, але НЕ натискає Post
+// (безпечний прогін розкладу без реальних публікацій). true = реальна публікація.
+const ANDROID_THREADS_PUBLISH = process.env.ANDROID_THREADS_PUBLISH !== "false";
+// Коли акаунт має androidProfileId — публікація йде через оркестратор: піднятти
+// саме його профіль-телефон, запостити, закрити застосунок і згасити емулятор.
+// ANDROID_STOP_AFTER_POST=false лишає емулятор увімкненим після поста.
+const ANDROID_STOP_AFTER_POST = process.env.ANDROID_STOP_AFTER_POST !== "false";
 
 // Kept in sync with automationController.recordAuthResult — records whether a login
 // (or a publish that includes a login) succeeded, so the account table reflects the
@@ -62,6 +75,41 @@ async function publishToAccount(post, account, entry) {
 
   try {
     if (account.platform === "threads") {
+      // Шлях через Android-емулятор: ті самі дії, що й уручну (відкрити Threads,
+      // ввести текст, натиснути Post) — виконує flows.threads_post через міст.
+      if (ANDROID_THREADS_POSTING) {
+        const publishReal = ANDROID_THREADS_PUBLISH;
+        let result;
+        let via;
+        if (account.androidProfileId) {
+          // Повний життєвий цикл на власному профілі-телефоні акаунта.
+          result = await androidOrchestrator.runForAccount(
+            account,
+            { type: "threadsPost", text: postText, publish: publishReal },
+            { stopAfter: ANDROID_STOP_AFTER_POST },
+          );
+          via = "orchestrator";
+        } else {
+          // Фолбек: єдиний уже запущений емулятор (один спільний пристрій).
+          result = await androidBridge.threadsPost(postText, publishReal);
+          via = "emulator";
+        }
+        if (publishReal) {
+          entry.status = "published";
+          entry.publishedAt = new Date();
+          await post.save();
+          await recordAuthResult(account, true, null);
+        }
+        account.restUntil = scheduleRest();
+        await account.save();
+        return {
+          published: publishReal,
+          via,
+          dryRun: !publishReal,
+          info: result,
+        };
+      }
+
       let tempPaths = [];
       try {
         const password = decrypt(account.passwordEncrypted);
@@ -89,7 +137,9 @@ async function publishToAccount(post, account, entry) {
     const session = await browserService.createSession({
       accountId: account._id.toString(),
       label: "scheduled-publish",
-      userAgent: account.userAgent || null,      profileId: account.profileId || null,    });
+      userAgent: account.userAgent || null,
+      profileId: account.profileId || null,
+    });
 
     let tempPaths = [];
     try {
@@ -142,7 +192,10 @@ async function publishDuePosts() {
   const due = await Post.find({
     scheduledAt: { $ne: null, $lte: new Date() },
     accounts: { $elemMatch: { status: "pending" } },
-  }).populate('accounts.account', 'platform username displayName userAgent profileId');
+  }).populate(
+    "accounts.account",
+    "platform username displayName userAgent profileId androidProfileId",
+  );
 
   const summary = [];
   for (const post of due) {
@@ -181,7 +234,10 @@ async function publishDuePosts() {
 async function refreshPublishedMetrics() {
   const posts = await Post.find({
     accounts: { $elemMatch: { status: "published", postUrl: { $ne: "" } } },
-  }).populate('accounts.account', 'platform username displayName userAgent profileId');
+  }).populate(
+    "accounts.account",
+    "platform username displayName userAgent profileId",
+  );
 
   const summary = [];
   for (const post of posts) {
@@ -201,7 +257,9 @@ async function refreshPublishedMetrics() {
       const session = await browserService.createSession({
         accountId: account._id.toString(),
         label: "scheduled-metrics",
-        userAgent: account.userAgent || null,        profileId: account.profileId || null,      });
+        userAgent: account.userAgent || null,
+        profileId: account.profileId || null,
+      });
       try {
         try {
           const password = decrypt(account.passwordEncrypted);

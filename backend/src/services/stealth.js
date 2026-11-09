@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
 // Shared anti-automation fingerprint layer.
 //
@@ -16,24 +16,24 @@ const path = require('path');
 // and over-aggressive patching can itself be a detection signal, so it stays
 // conservative.
 
-const INIT_SCRIPT_PATH = path.join(__dirname, 'stealthInit.js');
+const INIT_SCRIPT_PATH = path.join(__dirname, "stealthInit.js");
 
-const LOCALE = process.env.STEALTH_LOCALE || 'uk-UA';
-const TIMEZONE = process.env.STEALTH_TIMEZONE || 'Europe/Kyiv';
+const LOCALE = process.env.STEALTH_LOCALE || "uk-UA";
+const TIMEZONE = process.env.STEALTH_TIMEZONE || "Europe/Kyiv";
 
 function initScript() {
-  return fs.readFileSync(INIT_SCRIPT_PATH, 'utf8');
+  return fs.readFileSync(INIT_SCRIPT_PATH, "utf8");
 }
 
 function launchArgs() {
   return [
-    '--disable-blink-features=AutomationControlled',
-    '--disable-infobars',
+    "--disable-blink-features=AutomationControlled",
+    "--disable-infobars",
   ];
 }
 
 function uaLooksMobile(ua) {
-  return /Android|iPhone|iPad|Mobile|IEMobile/i.test(ua || '');
+  return /Android|iPhone|iPad|Mobile|IEMobile/i.test(ua || "");
 }
 
 // Context options for the direct Playwright path. Viewport/screen are derived from
@@ -41,21 +41,46 @@ function uaLooksMobile(ua) {
 function contextOptions(userAgent) {
   const mobile = uaLooksMobile(userAgent);
   return {
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 768 },
-    screen: mobile ? { width: 390, height: 844 } : { width: 1920, height: 1080 },
+    viewport: mobile
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 },
+    screen: mobile
+      ? { width: 390, height: 844 }
+      : { width: 1920, height: 1080 },
     deviceScaleFactor: mobile ? 3 : 1,
     isMobile: mobile,
     hasTouch: mobile,
     locale: LOCALE,
     timezoneId: TIMEZONE,
-    colorScheme: 'light',
+    colorScheme: "light",
   };
 }
 
 const CHROME_CANDIDATES = [
-  () => path.join(process.env.PROGRAMFILES || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-  () => path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-  () => path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+  () =>
+    path.join(
+      process.env.PROGRAMFILES || "",
+      "Google",
+      "Chrome",
+      "Application",
+      "chrome.exe",
+    ),
+  () =>
+    path.join(
+      process.env["PROGRAMFILES(X86)"] || "",
+      "Google",
+      "Chrome",
+      "Application",
+      "chrome.exe",
+    ),
+  () =>
+    path.join(
+      process.env.LOCALAPPDATA || "",
+      "Google",
+      "Chrome",
+      "Application",
+      "chrome.exe",
+    ),
 ];
 
 // Returns 'chrome' when a real Chrome install is found, else null (caller falls
@@ -63,14 +88,14 @@ const CHROME_CANDIDATES = [
 function detectChromeChannel() {
   for (const candidate of CHROME_CANDIDATES) {
     const p = candidate();
-    if (p && fs.existsSync(p)) return 'chrome';
+    if (p && fs.existsSync(p)) return "chrome";
   }
   return null;
 }
 
 // Viewport string for the Playwright MCP CLI's --viewport-size flag.
 function mcpViewportSize(userAgent) {
-  return uaLooksMobile(userAgent) ? '390,844' : '1366,768';
+  return uaLooksMobile(userAgent) ? "390,844" : "1366,768";
 }
 
 module.exports = {

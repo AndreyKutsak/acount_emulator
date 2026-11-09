@@ -17,7 +17,10 @@ function stickyIdFor(accountId, now = Date.now()) {
   const windowStart = Math.floor(now / (windowMinutes * 60 * 1000));
   // Account + time window → the same account keeps one id for the whole window,
   // different accounts never collide in the same window.
-  const hash = Array.from(String(accountId)).reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const hash = Array.from(String(accountId)).reduce(
+    (a, c) => (a * 31 + c.charCodeAt(0)) >>> 0,
+    7,
+  );
   return `${windowStart}-${(hash % 100000).toString(36)}`;
 }
 
@@ -28,13 +31,15 @@ function buildProxy(accountId) {
   const endpoint = process.env.PROXY_ENDPOINT;
   const username = process.env.PROXY_USERNAME;
   const sticky = Number(process.env.PROXY_STICKY_DURATION_MIN) > 0;
-  const effectiveUser = sticky ? `${username}-session-${stickyIdFor(accountId)}` : username;
+  const effectiveUser = sticky
+    ? `${username}-session-${stickyIdFor(accountId)}`
+    : username;
 
   return {
     server: `http://${endpoint}`,
     endpoint,
     username: effectiveUser,
-    password: process.env.PROXY_PASSWORD || '',
+    password: process.env.PROXY_PASSWORD || "",
   };
 }
 
@@ -43,7 +48,7 @@ function warnIfFallback() {
   if (!enabled() && !warned) {
     warned = true;
     console.warn(
-      '[proxy] no residential proxy configured (PROXY_ENDPOINT/PROXY_USERNAME) — falling back to direct/VPN egress'
+      "[proxy] no residential proxy configured (PROXY_ENDPOINT/PROXY_USERNAME) — falling back to direct/VPN egress",
     );
   }
 }

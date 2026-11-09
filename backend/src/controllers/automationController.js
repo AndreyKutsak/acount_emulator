@@ -1,20 +1,29 @@
-const mongoose = require('mongoose');
-const SocialAccount = require('../models/SocialAccount');
-const VpnSession = require('../models/VpnSession');
-const Post = require('../models/Post');
-const { decrypt } = require('../services/cryptoService');
-const { captureAuthDebug } = require('../services/authDebugService');
-const threadsMcpService = require('../services/threadsMcpService');
-const mcpBrowserService = require('../services/mcpBrowserService');
-const browserService = require('../services/browserService');
-const loginStrategies = require('../services/loginStrategies');
-const scrapeStrategies = require('../services/scrapeStrategies');
-const publishStrategies = require('../services/publishStrategies');
-const { downloadAllToTempFiles, cleanupTempFiles } = require('../services/tempDownload');
-const { USER_AGENT_PRESETS } = require('../services/userAgentPresets');
-const { scheduleRest, isResting } = require('../services/humanize');
-const proxyManager = require('../services/proxyManager');
-const tlsClient = require('../services/tlsClient');
+const mongoose = require("mongoose");
+const SocialAccount = require("../models/SocialAccount");
+const VpnSession = require("../models/VpnSession");
+const Post = require("../models/Post");
+const { decrypt } = require("../services/cryptoService");
+const { captureAuthDebug } = require("../services/authDebugService");
+const threadsMcpService = require("../services/threadsMcpService");
+const mcpBrowserService = require("../services/mcpBrowserService");
+const browserService = require("../services/browserService");
+const loginStrategies = require("../services/loginStrategies");
+const scrapeStrategies = require("../services/scrapeStrategies");
+const publishStrategies = require("../services/publishStrategies");
+const {
+  downloadAllToTempFiles,
+  cleanupTempFiles,
+} = require("../services/tempDownload");
+const { USER_AGENT_PRESETS } = require("../services/userAgentPresets");
+const { scheduleRest, isResting } = require("../services/humanize");
+const proxyManager = require("../services/proxyManager");
+const tlsClient = require("../services/tlsClient");
+const androidBridge = require("../services/androidBridgeService");
+const androidOrchestrator = require("../services/androidOrchestrator");
+
+// Ті самі прапорці, що й у планувальнику: постинг Threads через Android-емулятор.
+const ANDROID_THREADS_POSTING = process.env.ANDROID_THREADS_POSTING === "true";
+const ANDROID_THREADS_PUBLISH = process.env.ANDROID_THREADS_PUBLISH !== "false";
 
 function toSafeAccount(account) {
   const obj = account.toObject();
@@ -26,15 +35,16 @@ function toSafeAccount(account) {
 
 async function recordAuthResult(account, loggedIn, err, debugInfo) {
   if (loggedIn) {
-    account.authStatus = 'authorized';
-    account.authError = '';
+    account.authStatus = "authorized";
+    account.authError = "";
     account.authDebug = undefined;
   } else {
     // LOGIN_NOT_CONFIRMED means the form was filled and submitted without error, but the
     // platform never actually left the login page — typically a soft rate limit/automation
     // checkpoint after repeated automated logins, not a simple wrong-password failure.
-    account.authStatus = err?.code === 'LOGIN_NOT_CONFIRMED' ? 'blocked' : 'failed';
-    account.authError = err?.message || '';
+    account.authStatus =
+      err?.code === "LOGIN_NOT_CONFIRMED" ? "blocked" : "failed";
+    account.authError = err?.message || "";
     account.authDebug = debugInfo || undefined;
   }
   account.authCheckedAt = new Date();
@@ -51,27 +61,36 @@ exports.listUserAgentPresets = (req, res) => {
 
 exports.health = (req, res) => {
   res.json({
-    engine: process.env.BROWSER_ENGINE || 'playwright',
-    headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
-    browser: 'ok',
+    engine: process.env.BROWSER_ENGINE || "playwright",
+    headless: process.env.PLAYWRIGHT_HEADLESS !== "false",
+    browser: "ok",
     proxy: proxyManager.enabled()
       ? { enabled: true, endpoint: process.env.PROXY_ENDPOINT }
-      : { enabled: false, note: 'no residential proxy — using direct/VPN egress' },
+      : {
+          enabled: false,
+          note: "no residential proxy — using direct/VPN egress",
+        },
     tls: tlsClient.available()
-      ? { enabled: true, impersonate: process.env.TLS_IMPERSONATE || 'chrome124' }
-      : { enabled: false, note: 'impersonated-fetch not installed — using plain fetch' },
+      ? {
+          enabled: true,
+          impersonate: process.env.TLS_IMPERSONATE || "chrome124",
+        }
+      : {
+          enabled: false,
+          note: "impersonated-fetch not installed — using plain fetch",
+        },
   });
 };
 
 exports.checkAuth = async (req, res, next) => {
   try {
     const account = await SocialAccount.findById(req.params.accountId);
-    if (!account) return res.status(404).json({ message: 'Account not found' });
+    if (!account) return res.status(404).json({ message: "Account not found" });
 
     // Threads is driven through the Playwright MCP server (browser automation over
     // MCP tool calls) instead of threads-bot's direct private API — see
     // services/threadsMcpService.js / services/mcpBrowserService.js.
-    if (account.platform === 'threads') {
+    if (account.platform === "threads") {
       let loggedIn = false;
       let loginErr = null;
       try {
@@ -87,7 +106,7 @@ exports.checkAuth = async (req, res, next) => {
 
     const tempSession = await browserService.createSession({
       accountId: account._id.toString(),
-      label: 'auth-check',
+      label: "auth-check",
       userAgent: req.body?.userAgent || account.userAgent || null,
       profileId: account.profileId || null,
     });
@@ -125,7 +144,7 @@ exports.checkAuth = async (req, res, next) => {
 // wired up here for now.
 const THREADS_MANUAL_ACTIONS = {
   createPost: async (account, password, { text }) => {
-    if (!text?.trim()) throw new Error('text is required');
+    if (!text?.trim()) throw new Error("text is required");
     return threadsMcpService.createPost(account, password, text.trim());
   },
 };
@@ -140,9 +159,13 @@ exports.threadsManualAction = async (req, res) => {
   const { action, ...payload } = req.body || {};
   try {
     const account = await SocialAccount.findById(req.params.accountId);
-    if (!account) return res.status(404).json({ message: 'Account not found' });
-    if (account.platform !== 'threads') {
-      return res.status(400).json({ message: 'Manual actions are only supported for threads accounts' });
+    if (!account) return res.status(404).json({ message: "Account not found" });
+    if (account.platform !== "threads") {
+      return res
+        .status(400)
+        .json({
+          message: "Manual actions are only supported for threads accounts",
+        });
     }
     const handler = THREADS_MANUAL_ACTIONS[action];
     if (!handler) {
@@ -176,11 +199,20 @@ exports.threadsManualAction = async (req, res) => {
 exports.openManualBrowser = async (req, res) => {
   try {
     const account = await SocialAccount.findById(req.params.accountId);
-    if (!account) return res.status(404).json({ message: 'Account not found' });
-    if (account.platform !== 'threads') {
-      return res.status(400).json({ message: 'Opening a live browser window is only wired up for threads accounts' });
+    if (!account) return res.status(404).json({ message: "Account not found" });
+    if (account.platform !== "threads") {
+      return res
+        .status(400)
+        .json({
+          message:
+            "Opening a live browser window is only wired up for threads accounts",
+        });
     }
-    if (isResting(account)) {
+    const manual = req.body?.manual === true;
+
+    // Manual login is human-driven, so the anti-automation rest window does not
+    // apply to it — only the automated mode is gated by isResting.
+    if (!manual && isResting(account)) {
       return res.status(409).json({
         message:
           `Account is resting to avoid looking automated — try again after ` +
@@ -189,25 +221,84 @@ exports.openManualBrowser = async (req, res) => {
       });
     }
 
-    const password = decrypt(account.passwordEncrypted);
-    const sessionId = await threadsMcpService.openManualBrowser(account, password);
+    let sessionId;
+    if (manual) {
+      sessionId = await threadsMcpService.openManualLogin(account);
+    } else {
+      const password = decrypt(account.passwordEncrypted);
+      sessionId = await threadsMcpService.openManualBrowser(account, password);
+    }
 
-    account.restUntil = scheduleRest();
-    await account.save();
+    // Only the automated mode rests the account — manual login is human-driven.
+    if (!manual) {
+      account.restUntil = scheduleRest();
+      await account.save();
+    }
 
-    res.json({ sessionId: `mcp:${sessionId}`, message: 'Відкрито реальне вікно Chrome, залогінене під цей акаунт.' });
+    res.json({
+      sessionId: `mcp:${sessionId}`,
+      manual,
+      message: manual
+        ? "Відкрито вікно Chrome на сторінці входу Threads — залогіньтесь вручну та збережіть сесію."
+        : "Відкрито реальне вікно Chrome, залогінене під цей акаунт.",
+    });
   } catch (err) {
     res.status(502).json({ message: `Could not open browser: ${err.message}` });
+  }
+};
+
+// After a human has signed in manually in the opened browser window, capture the
+// resulting cookies/localStorage and persist them for future automated sessions.
+exports.saveManualAuth = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { accountId } = req.body || {};
+    if (!sessionId || !accountId) {
+      return res
+        .status(400)
+        .json({ message: "sessionId and accountId are required" });
+    }
+
+    const id = sessionId.startsWith("mcp:") ? sessionId.slice(4) : sessionId;
+    const session = mcpBrowserService.getSession(id);
+    if (!session) return res.status(404).json({ message: "Session not found" });
+
+    const account = await SocialAccount.findById(accountId);
+    if (!account) return res.status(404).json({ message: "Account not found" });
+
+    const result = await threadsMcpService.captureManualLogin(session, account);
+    if (!result.loggedIn) {
+      return res.status(400).json({
+        loggedIn: false,
+        message:
+          "Схоже, ви ще на сторінці входу — завершіть авторизацію у вікні Chrome і повторіть.",
+      });
+    }
+
+    account.authStatus = "authorized";
+    account.authError = "";
+    account.authCheckedAt = new Date();
+    await account.save();
+
+    res.json({
+      loggedIn: true,
+      message:
+        "Сесію збережено — наступні автоматизовані дії використовуватимуть її без повторного логіну.",
+    });
+  } catch (err) {
+    res.status(502).json({ message: `Could not save auth: ${err.message}` });
   }
 };
 
 exports.startSession = async (req, res, next) => {
   try {
     const { accountId, label, loginUrl, skipLogin, userAgent } = req.body;
-    if (!accountId) return res.status(400).json({ message: 'accountId is required' });
+    if (!accountId)
+      return res.status(400).json({ message: "accountId is required" });
 
-    const account = await SocialAccount.findById(accountId).populate('vpnServer');
-    if (!account) return res.status(404).json({ message: 'Account not found' });
+    const account =
+      await SocialAccount.findById(accountId).populate("vpnServer");
+    if (!account) return res.status(404).json({ message: "Account not found" });
 
     let vpnSession = null;
     if (account.vpnServer) {
@@ -224,7 +315,7 @@ exports.startSession = async (req, res, next) => {
       accountId: account._id.toString(),
       vpnServerId: account.vpnServer ? account.vpnServer._id.toString() : null,
       vpnSessionId: vpnSession ? vpnSession._id.toString() : null,
-      label: label || '',
+      label: label || "",
       userAgent: userAgent || account.userAgent || null,
       profileId: account.profileId || null,
     });
@@ -268,24 +359,25 @@ exports.stopSession = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
 
-    if (sessionId.startsWith('mcp:')) {
+    if (sessionId.startsWith("mcp:")) {
       const closed = await mcpBrowserService.closeSession(sessionId.slice(4));
-      if (!closed) return res.status(404).json({ message: 'Session not found' });
-      return res.json({ message: 'Session closed' });
+      if (!closed)
+        return res.status(404).json({ message: "Session not found" });
+      return res.json({ message: "Session closed" });
     }
 
     const session = browserService.getSession(sessionId);
-    if (!session) return res.status(404).json({ message: 'Session not found' });
+    if (!session) return res.status(404).json({ message: "Session not found" });
 
     if (session.vpnSessionId) {
       await VpnSession.findByIdAndUpdate(session.vpnSessionId, {
-        status: 'closed',
+        status: "closed",
         endedAt: new Date(),
       }).catch(() => {});
     }
 
     await browserService.closeSession(sessionId);
-    res.json({ message: 'Session closed' });
+    res.json({ message: "Session closed" });
   } catch (err) {
     next(err);
   }
@@ -294,13 +386,13 @@ exports.stopSession = async (req, res, next) => {
 exports.navigate = async (req, res, next) => {
   try {
     const session = browserService.getSession(req.params.sessionId);
-    if (!session) return res.status(404).json({ message: 'Session not found' });
+    if (!session) return res.status(404).json({ message: "Session not found" });
 
     const { url } = req.body;
-    if (!url) return res.status(400).json({ message: 'url is required' });
+    if (!url) return res.status(400).json({ message: "url is required" });
 
-    await session.page.goto(url, { waitUntil: 'domcontentloaded' });
-    res.json({ message: 'Navigated', url });
+    await session.page.goto(url, { waitUntil: "domcontentloaded" });
+    res.json({ message: "Navigated", url });
   } catch (err) {
     next(err);
   }
@@ -309,11 +401,15 @@ exports.navigate = async (req, res, next) => {
 exports.extract = async (req, res, next) => {
   try {
     const session = browserService.getSession(req.params.sessionId);
-    if (!session) return res.status(404).json({ message: 'Session not found' });
+    if (!session) return res.status(404).json({ message: "Session not found" });
 
     const { selectors } = req.body;
-    if (!selectors || typeof selectors !== 'object') {
-      return res.status(400).json({ message: 'selectors object is required, e.g. { "title": "h1" }' });
+    if (!selectors || typeof selectors !== "object") {
+      return res
+        .status(400)
+        .json({
+          message: 'selectors object is required, e.g. { "title": "h1" }',
+        });
     }
 
     const entries = await Promise.all(
@@ -324,7 +420,7 @@ exports.extract = async (req, res, next) => {
           .innerText({ timeout: 5000 })
           .catch(() => null);
         return [key, text];
-      })
+      }),
     );
 
     res.json(Object.fromEntries(entries));
@@ -336,36 +432,45 @@ exports.extract = async (req, res, next) => {
 exports.scrapePost = async (req, res, next) => {
   try {
     const session = browserService.getSession(req.params.sessionId);
-    if (!session) return res.status(404).json({ message: 'Session not found' });
+    if (!session) return res.status(404).json({ message: "Session not found" });
 
     const { postId, url, selectors } = req.body;
     if (!postId || !url) {
-      return res.status(400).json({ message: 'postId and url are required' });
+      return res.status(400).json({ message: "postId and url are required" });
     }
 
     const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: 'Post not found' });
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const entry = post.accounts.find((a) => a.account.toString() === session.accountId);
-    if (!entry) return res.status(404).json({ message: 'Account not linked to this post' });
+    const entry = post.accounts.find(
+      (a) => a.account.toString() === session.accountId,
+    );
+    if (!entry)
+      return res
+        .status(404)
+        .json({ message: "Account not linked to this post" });
 
     const account = await SocialAccount.findById(session.accountId);
 
-    await session.page.goto(url, { waitUntil: 'domcontentloaded' });
-    const metrics = await scrapeStrategies.extractMetrics(session.page, account.platform, selectors);
+    await session.page.goto(url, { waitUntil: "domcontentloaded" });
+    const metrics = await scrapeStrategies.extractMetrics(
+      session.page,
+      account.platform,
+      selectors,
+    );
 
     if (metrics.views !== undefined) entry.views = metrics.views;
     if (metrics.likes !== undefined) entry.likes = metrics.likes;
     if (metrics.comments !== undefined) entry.comments = metrics.comments;
-    if (entry.status !== 'published') {
-      entry.status = 'published';
+    if (entry.status !== "published") {
+      entry.status = "published";
       entry.publishedAt = entry.publishedAt || new Date();
     }
 
     await post.save();
     const populated = await Post.findById(post._id).populate(
-      'accounts.account',
-      'platform username displayName'
+      "accounts.account",
+      "platform username displayName",
     );
     res.json(populated.toSummary());
   } catch (err) {
@@ -376,23 +481,75 @@ exports.scrapePost = async (req, res, next) => {
 exports.publishPostForAccount = async (req, res) => {
   const { postId, accountId, text, imageUrls, userAgent } = req.body;
   if (!postId || !accountId) {
-    return res.status(400).json({ message: 'postId and accountId are required' });
+    return res
+      .status(400)
+      .json({ message: "postId and accountId are required" });
   }
-  if (!mongoose.isValidObjectId(postId) || !mongoose.isValidObjectId(accountId)) {
-    return res.status(400).json({ message: 'postId and accountId must be valid ids' });
+  if (
+    !mongoose.isValidObjectId(postId) ||
+    !mongoose.isValidObjectId(accountId)
+  ) {
+    return res
+      .status(400)
+      .json({ message: "postId and accountId must be valid ids" });
   }
 
   try {
     const account = await SocialAccount.findById(accountId);
-    if (!account) return res.status(404).json({ message: 'Account not found' });
+    if (!account) return res.status(404).json({ message: "Account not found" });
 
     const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: 'Post not found' });
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
     const entry = post.accounts.find((a) => a.account.toString() === accountId);
-    if (!entry) return res.status(404).json({ message: 'Account not linked to this post' });
+    if (!entry)
+      return res
+        .status(404)
+        .json({ message: "Account not linked to this post" });
 
-    if (account.platform === 'threads') {
+    if (account.platform === "threads") {
+      // Емуляторний шлях: нативний застосунок Threads в Android-емуляторі (міст).
+      if (ANDROID_THREADS_POSTING) {
+        const postText = text ?? post.text;
+        try {
+          let result;
+          if (account.androidProfileId) {
+            // У акаунта є власний ManyFaces-профіль (телефон) — довіряємо
+            // оркестратору: він сам підніме саме цей емулятор, застосує
+            // спуф, постить і погасить емулятор після (звільнення ресурсів).
+            result = await androidOrchestrator.runForAccount(
+              account,
+              { type: "threadsPost", text: postText, publish: ANDROID_THREADS_PUBLISH },
+              { stopAfter: true },
+            );
+          } else {
+            // Немає прив'язаного профілю — старий шлях: б'ємо в уже запущений
+            // (вручну) емулятор напряму, нічого не стартуємо й не гасимо.
+            result = await androidBridge.threadsPost(postText, ANDROID_THREADS_PUBLISH);
+          }
+          if (ANDROID_THREADS_PUBLISH) {
+            entry.status = "published";
+            entry.publishedAt = new Date();
+            await post.save();
+            await recordAuthResult(account, true, null);
+          }
+          const populated = await Post.findById(post._id).populate(
+            "accounts.account",
+            "platform username displayName",
+          );
+          return res.json({
+            ...populated.toSummary(),
+            via: "emulator",
+            dryRun: !ANDROID_THREADS_PUBLISH,
+            emulator: result,
+          });
+        } catch (err) {
+          return res
+            .status(502)
+            .json({ message: `Emulator publish failed: ${err.message}` });
+        }
+      }
+
       let tempPaths = [];
       try {
         const password = decrypt(account.passwordEncrypted);
@@ -402,30 +559,37 @@ exports.publishPostForAccount = async (req, res) => {
           tempPaths = await downloadAllToTempFiles(urls);
         }
 
-        const result = await threadsMcpService.createPost(account, password, postText, tempPaths);
+        const result = await threadsMcpService.createPost(
+          account,
+          password,
+          postText,
+          tempPaths,
+        );
         await recordAuthResult(account, true, null);
 
-        entry.status = 'published';
+        entry.status = "published";
         entry.publishedAt = new Date();
         if (result?.postUrl) entry.postUrl = result.postUrl;
         await post.save();
       } catch (err) {
         await recordAuthResult(account, false, err);
-        return res.status(502).json({ message: `Publish failed: ${err.message}` });
+        return res
+          .status(502)
+          .json({ message: `Publish failed: ${err.message}` });
       } finally {
         cleanupTempFiles(tempPaths);
       }
 
       const populatedThreads = await Post.findById(post._id).populate(
-        'accounts.account',
-        'platform username displayName'
+        "accounts.account",
+        "platform username displayName",
       );
       return res.json(populatedThreads.toSummary());
     }
 
     const session = await browserService.createSession({
       accountId: account._id.toString(),
-      label: 'publish-now',
+      label: "publish-now",
       userAgent: userAgent || account.userAgent || null,
       profileId: account.profileId || null,
     });
@@ -459,7 +623,7 @@ exports.publishPostForAccount = async (req, res) => {
         username: account.username,
       });
 
-      entry.status = 'published';
+      entry.status = "published";
       entry.publishedAt = new Date();
       if (result?.postUrl) entry.postUrl = result.postUrl;
       await post.save();
@@ -469,8 +633,8 @@ exports.publishPostForAccount = async (req, res) => {
     }
 
     const populated = await Post.findById(post._id).populate(
-      'accounts.account',
-      'platform username displayName'
+      "accounts.account",
+      "platform username displayName",
     );
     res.json(populated.toSummary());
   } catch (err) {
@@ -481,25 +645,35 @@ exports.publishPostForAccount = async (req, res) => {
 exports.refreshMetrics = async (req, res) => {
   const { postId, accountId, userAgent } = req.body;
   if (!postId || !accountId) {
-    return res.status(400).json({ message: 'postId and accountId are required' });
+    return res
+      .status(400)
+      .json({ message: "postId and accountId are required" });
   }
-  if (!mongoose.isValidObjectId(postId) || !mongoose.isValidObjectId(accountId)) {
-    return res.status(400).json({ message: 'postId and accountId must be valid ids' });
+  if (
+    !mongoose.isValidObjectId(postId) ||
+    !mongoose.isValidObjectId(accountId)
+  ) {
+    return res
+      .status(400)
+      .json({ message: "postId and accountId must be valid ids" });
   }
 
   try {
     const account = await SocialAccount.findById(accountId);
-    if (!account) return res.status(404).json({ message: 'Account not found' });
+    if (!account) return res.status(404).json({ message: "Account not found" });
 
     const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: 'Post not found' });
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
     const entry = post.accounts.find((a) => a.account.toString() === accountId);
-    if (!entry) return res.status(404).json({ message: 'Account not linked to this post' });
+    if (!entry)
+      return res
+        .status(404)
+        .json({ message: "Account not linked to this post" });
     if (!entry.postUrl) {
       return res.status(400).json({
         message:
-          'This post has no stored URL yet — publish it via automation first (manually marking it published does not capture a URL to scrape).',
+          "This post has no stored URL yet — publish it via automation first (manually marking it published does not capture a URL to scrape).",
       });
     }
 
@@ -508,7 +682,7 @@ exports.refreshMetrics = async (req, res) => {
     // Playwright-session path below (login + scrape) handles it like any other platform.
     const session = await browserService.createSession({
       accountId: account._id.toString(),
-      label: 'refresh-metrics',
+      label: "refresh-metrics",
       userAgent: userAgent || account.userAgent || null,
       profileId: account.profileId || null,
     });
@@ -528,9 +702,14 @@ exports.refreshMetrics = async (req, res) => {
         throw new Error(`Login failed: ${err.message}`);
       }
 
-      await session.page.goto(entry.postUrl, { waitUntil: 'domcontentloaded' });
-      await session.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
-      const metrics = await scrapeStrategies.extractMetrics(session.page, account.platform);
+      await session.page.goto(entry.postUrl, { waitUntil: "domcontentloaded" });
+      await session.page
+        .waitForLoadState("networkidle", { timeout: 30000 })
+        .catch(() => {});
+      const metrics = await scrapeStrategies.extractMetrics(
+        session.page,
+        account.platform,
+      );
 
       if (metrics.views !== undefined) entry.views = metrics.views;
       if (metrics.likes !== undefined) entry.likes = metrics.likes;
@@ -541,8 +720,8 @@ exports.refreshMetrics = async (req, res) => {
     }
 
     const populated = await Post.findById(post._id).populate(
-      'accounts.account',
-      'platform username displayName'
+      "accounts.account",
+      "platform username displayName",
     );
     res.json(populated.toSummary());
   } catch (err) {
@@ -553,16 +732,21 @@ exports.refreshMetrics = async (req, res) => {
 exports.publishPost = async (req, res, next) => {
   try {
     const session = browserService.getSession(req.params.sessionId);
-    if (!session) return res.status(404).json({ message: 'Session not found' });
+    if (!session) return res.status(404).json({ message: "Session not found" });
 
     const { postId, text, imageUrls } = req.body;
-    if (!postId) return res.status(400).json({ message: 'postId is required' });
+    if (!postId) return res.status(400).json({ message: "postId is required" });
 
     const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: 'Post not found' });
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const entry = post.accounts.find((a) => a.account.toString() === session.accountId);
-    if (!entry) return res.status(404).json({ message: 'Account not linked to this post' });
+    const entry = post.accounts.find(
+      (a) => a.account.toString() === session.accountId,
+    );
+    if (!entry)
+      return res
+        .status(404)
+        .json({ message: "Account not linked to this post" });
 
     const account = await SocialAccount.findById(session.accountId);
     const postText = text ?? post.text;
@@ -586,14 +770,14 @@ exports.publishPost = async (req, res, next) => {
       cleanupTempFiles(tempPaths);
     }
 
-    entry.status = 'published';
+    entry.status = "published";
     entry.publishedAt = new Date();
     if (resultPostUrl) entry.postUrl = resultPostUrl;
     await post.save();
 
     const populated = await Post.findById(post._id).populate(
-      'accounts.account',
-      'platform username displayName'
+      "accounts.account",
+      "platform username displayName",
     );
     res.json(populated.toSummary());
   } catch (err) {

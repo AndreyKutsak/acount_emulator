@@ -4,22 +4,34 @@
 // deliberately conservative so it does not break pages that rely on real APIs.
 (() => {
   try {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
   } catch (e) {}
 
   try {
-    Object.defineProperty(navigator, 'languages', {
-      get: () => ['uk-UA', 'uk', 'en-US', 'en'],
+    Object.defineProperty(navigator, "languages", {
+      get: () => ["uk-UA", "uk", "en-US", "en"],
     });
   } catch (e) {}
 
   try {
     const plugins = [
-      { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-      { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
-      { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+      {
+        name: "Chrome PDF Plugin",
+        filename: "internal-pdf-viewer",
+        description: "Portable Document Format",
+      },
+      {
+        name: "Chrome PDF Viewer",
+        filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai",
+        description: "",
+      },
+      {
+        name: "Native Client",
+        filename: "internal-nacl-plugin",
+        description: "",
+      },
     ];
-    Object.defineProperty(navigator, 'plugins', {
+    Object.defineProperty(navigator, "plugins", {
       get: () => {
         const arr = plugins.slice();
         arr.item = (i) => arr[i] || null;
@@ -30,10 +42,18 @@
     });
 
     const mimeTypes = [
-      { type: 'application/pdf', suffixes: 'pdf', description: 'Portable Document Format' },
-      { type: 'application/x-google-chrome-pdf', suffixes: 'pdf', description: 'Portable Document Format' },
+      {
+        type: "application/pdf",
+        suffixes: "pdf",
+        description: "Portable Document Format",
+      },
+      {
+        type: "application/x-google-chrome-pdf",
+        suffixes: "pdf",
+        description: "Portable Document Format",
+      },
     ];
-    Object.defineProperty(navigator, 'mimeTypes', {
+    Object.defineProperty(navigator, "mimeTypes", {
       get: () => {
         const arr = mimeTypes.slice();
         arr.item = (i) => arr[i] || null;
@@ -55,7 +75,14 @@
   } catch (e) {}
 
   try {
-    const marks = ['__playwright', '__pw_manual', '__PW_inspect', 'playwright', 'playwrightBinding', '__ariaSnapshot'];
+    const marks = [
+      "__playwright",
+      "__pw_manual",
+      "__PW_inspect",
+      "playwright",
+      "playwrightBinding",
+      "__ariaSnapshot",
+    ];
     for (const key of marks) {
       try {
         delete window[key];

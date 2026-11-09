@@ -15,8 +15,8 @@ function load() {
     resolved = true;
     try {
       // eslint-disable-next-line global-require
-      const mod = require('impersonated-fetch');
-      lib = mod && typeof mod.fetch === 'function' ? mod : null;
+      const mod = require("impersonated-fetch");
+      lib = mod && typeof mod.fetch === "function" ? mod : null;
     } catch {
       lib = null;
     }
@@ -31,7 +31,8 @@ function available() {
 async function fetch(url, options = {}) {
   const mod = load();
   if (mod) {
-    const impersonate = options.impersonate || process.env.TLS_IMPERSONATE || 'chrome124';
+    const impersonate =
+      options.impersonate || process.env.TLS_IMPERSONATE || "chrome124";
     return mod.fetch(url, { ...options, impersonate });
   }
   return globalThis.fetch(url, options);

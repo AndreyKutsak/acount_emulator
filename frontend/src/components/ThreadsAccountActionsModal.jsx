@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Modal from './Modal';
-import { runThreadsAction, openAccountBrowser, closeBrowserSession } from '../api/socialAccounts';
+import { runThreadsAction, openAccountBrowser, openAccountBrowserManual, saveBrowserAuth, closeBrowserSession } from '../api/socialAccounts';
 import { errorMessage } from '../api/client';
 
 export default function ThreadsAccountActionsModal({ account, onClose, onChange }) {
@@ -12,19 +12,58 @@ export default function ThreadsAccountActionsModal({ account, onClose, onChange 
   const [browserSessionId, setBrowserSessionId] = useState(null);
   const [browserOpening, setBrowserOpening] = useState(false);
   const [browserError, setBrowserError] = useState(null);
+  const [manualLogin, setManualLogin] = useState(false);
+  const [savingAuth, setSavingAuth] = useState(false);
+  const [authMessage, setAuthMessage] = useState(null);
+  const [authSaveError, setAuthSaveError] = useState(null);
 
   const resting = account.restUntil && new Date(account.restUntil) > new Date();
 
   const handleOpenBrowser = async () => {
     setBrowserOpening(true);
     setBrowserError(null);
+    setAuthMessage(null);
+    setAuthSaveError(null);
     try {
       const res = await openAccountBrowser(account._id);
       setBrowserSessionId(res.sessionId);
+      setManualLogin(false);
     } catch (err) {
       setBrowserError(errorMessage(err, 'Не вдалося відкрити браузер'));
     } finally {
       setBrowserOpening(false);
+    }
+  };
+
+  const handleOpenManualBrowser = async () => {
+    setBrowserOpening(true);
+    setBrowserError(null);
+    setAuthMessage(null);
+    setAuthSaveError(null);
+    try {
+      const res = await openAccountBrowserManual(account._id);
+      setBrowserSessionId(res.sessionId);
+      setManualLogin(true);
+    } catch (err) {
+      setBrowserError(errorMessage(err, 'Не вдалося відкрити браузер'));
+    } finally {
+      setBrowserOpening(false);
+    }
+  };
+
+  const handleSaveAuth = async () => {
+    if (!browserSessionId) return;
+    setSavingAuth(true);
+    setAuthSaveError(null);
+    setAuthMessage(null);
+    try {
+      await saveBrowserAuth(browserSessionId, account._id);
+      setAuthMessage('Сесію збережено — автоматизація більше не проситиме логін для цього акаунта.');
+      onChange?.();
+    } catch (err) {
+      setAuthSaveError(errorMessage(err, 'Не вдалося зберегти сесію'));
+    } finally {
+      setSavingAuth(false);
     }
   };
 
@@ -36,6 +75,9 @@ export default function ThreadsAccountActionsModal({ account, onClose, onChange 
       // Window may already be closed manually — nothing to clean up on our side either way.
     } finally {
       setBrowserSessionId(null);
+      setManualLogin(false);
+      setAuthMessage(null);
+      setAuthSaveError(null);
     }
   };
 
@@ -61,27 +103,41 @@ export default function ThreadsAccountActionsModal({ account, onClose, onChange 
     <Modal title={`Дії: ${account.displayName || account.username}`} onClose={onClose}>
       {resting && (
         <p className="error-inline" style={{ marginBottom: 12 }}>
-          Акаунт відпочиває до {new Date(account.restUntil).toLocaleString('uk-UA')} — дія все одно буде
-          відхилена сервером, якщо спробувати зараз.
+          Акаунт відпочиває до {new Date(account.restUntil).toLocaleString('uk-UA')} — автоматичні дії
+          будуть відхилені сервером, але ручний логін доступний.
         </p>
       )}
 
       <div className="card" style={{ marginBottom: 16, background: 'var(--surface-2)' }}>
         <div className="card-title">Реальний інтерфейс Threads</div>
         <p className="muted" style={{ marginBottom: 10, fontSize: 12.5 }}>
-          Threads забороняє показ свого сайту у чужому вікні (iframe) — тому натомість відкривається
-          справжнє вікно Chrome на цьому комп'ютері, вже залогінене під цей акаунт. Керуйте ним як
-          звичайним браузером.
+          Threads забороняє показ свого сайту у чужому вікні (iframe) — тому відкривається справжнє
+          вікно Chrome на цьому комп'ютері. Можна відкрити вже залогінений акаунт або залогінитись
+          вручну (наприклад, щоб пройти 2FA/капчу) і зберегти сесію.
         </p>
         {!browserSessionId ? (
-          <button className="btn btn-primary btn-sm" onClick={handleOpenBrowser} disabled={browserOpening || resting}>
-            {browserOpening ? 'Відкриття...' : 'Відкрити акаунт у Chrome'}
-          </button>
+          <div className="form-actions">
+            <button className="btn btn-primary btn-sm" onClick={handleOpenBrowser} disabled={browserOpening || resting}>
+              {browserOpening ? 'Відкриття...' : 'Відкрити акаунт у Chrome'}
+            </button>
+            <button className="btn btn-sm" onClick={handleOpenManualBrowser} disabled={browserOpening}>
+              Залогінитись вручну
+            </button>
+          </div>
         ) : (
-          <button className="btn btn-sm" onClick={handleCloseBrowser}>
-            Закрити вікно браузера
-          </button>
+          <div className="form-actions">
+            {manualLogin && (
+              <button className="btn btn-primary btn-sm" onClick={handleSaveAuth} disabled={savingAuth}>
+                {savingAuth ? 'Збереження...' : 'Я залогінився — зберегти сесію'}
+              </button>
+            )}
+            <button className="btn btn-sm" onClick={handleCloseBrowser}>
+              Закрити вікно браузера
+            </button>
+          </div>
         )}
+        {authMessage && <p className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>{authMessage}</p>}
+        {authSaveError && <p className="error-inline" style={{ marginTop: 8 }}>{authSaveError}</p>}
         {browserError && <p className="error-inline" style={{ marginTop: 8 }}>{browserError}</p>}
       </div>
 

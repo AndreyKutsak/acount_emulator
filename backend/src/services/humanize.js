@@ -12,18 +12,25 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const DEFAULT_COOLDOWN_MIN_MINUTES = Number(process.env.ACCOUNT_COOLDOWN_MIN_MINUTES) || 25;
-const DEFAULT_COOLDOWN_MAX_MINUTES = Number(process.env.ACCOUNT_COOLDOWN_MAX_MINUTES) || 70;
+const DEFAULT_COOLDOWN_MIN_MINUTES =
+  Number(process.env.ACCOUNT_COOLDOWN_MIN_MINUTES) || 25;
+const DEFAULT_COOLDOWN_MAX_MINUTES =
+  Number(process.env.ACCOUNT_COOLDOWN_MAX_MINUTES) || 70;
 
 // Picks a random point in the future rather than "now + fixed interval" — identical gaps
 // between an account's automated actions are as much a tell as no gap at all.
-function scheduleRest(minMinutes = DEFAULT_COOLDOWN_MIN_MINUTES, maxMinutes = DEFAULT_COOLDOWN_MAX_MINUTES) {
+function scheduleRest(
+  minMinutes = DEFAULT_COOLDOWN_MIN_MINUTES,
+  maxMinutes = DEFAULT_COOLDOWN_MAX_MINUTES,
+) {
   const minutes = randomInt(minMinutes, maxMinutes);
   return new Date(Date.now() + minutes * 60_000);
 }
 
 function isResting(account) {
-  return Boolean(account?.restUntil && new Date(account.restUntil).getTime() > Date.now());
+  return Boolean(
+    account?.restUntil && new Date(account.restUntil).getTime() > Date.now(),
+  );
 }
 
 // --- Mouse / typing / scrolling (human-like micro-behavior) ---
@@ -34,7 +41,7 @@ function isResting(account) {
 function humanCursor(page) {
   try {
     // eslint-disable-next-line global-require
-    const { createCursor } = require('ghost-cursor');
+    const { createCursor } = require("ghost-cursor");
     return createCursor(page);
   } catch {
     return null;
@@ -72,7 +79,10 @@ async function humanType(page, selector, text) {
 
 // A few organic scrolls before/after an action — instant, zero-movement pages are
 // a classic automation tell, so this adds the small "browsing" motions a person makes.
-async function randomScroll(page, { minScrolls = 2, maxScrolls = 5, maxDelta = 600 } = {}) {
+async function randomScroll(
+  page,
+  { minScrolls = 2, maxScrolls = 5, maxDelta = 600 } = {},
+) {
   const scrolls = randomInt(minScrolls, maxScrolls);
   for (let i = 0; i < scrolls; i++) {
     await page.mouse.wheel(0, randomInt(200, maxDelta));

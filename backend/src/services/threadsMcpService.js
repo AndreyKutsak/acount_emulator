@@ -1,23 +1,33 @@
-const crypto = require('crypto');
-const mcpBrowserService = require('./mcpBrowserService');
-const { encrypt, decrypt } = require('./cryptoService');
-const { sleep, randomInt } = require('./humanize');
+const crypto = require("crypto");
+const mcpBrowserService = require("./mcpBrowserService");
+const { encrypt, decrypt } = require("./cryptoService");
+const { sleep, randomInt } = require("./humanize");
 
 // Threads exposes no stable comment id in the DOM, so re-scrapes are deduplicated
 // by a hash of (author + text) instead of a platform-issued id.
 function makeCommentKey(author, text) {
-  return crypto.createHash('sha1').update(`${author}::${text}`).digest('hex');
+  return crypto.createHash("sha1").update(`${author}::${text}`).digest("hex");
 }
 
 // Same selectors the pre-threads-bot Playwright automation used for Threads
 // (loginStrategies.js / publishStrategies.js) — issued here as MCP tool calls
 // (browser_click/browser_type) instead of direct page.fill()/page.click().
-const LOGIN_URL = 'https://www.threads.com/login';
-const USERNAME_SELECTOR = 'input[placeholder="Username, phone or email"], input[name="username"]';
+const LOGIN_URL = "https://www.threads.com/login";
+const USERNAME_SELECTORS = [
+  'input[autocomplete="username"]',
+  'input[name="username"]',
+  'input[placeholder*="Username"]',
+  'input[placeholder*="username"]',
+  'input[aria-label*="Username"]',
+  'input[aria-label*="username"]',
+  'input[type="text"]',
+];
 const PASSWORD_SELECTOR = 'input[type="password"]';
 const SUBMIT_SELECTOR = 'input[type="submit"], button:has-text("Log in")';
-const COMPOSE_TRIGGER_SELECTOR = 'text=/what.?s new\\??/i, [aria-label="New thread"]';
-const EDITOR_SELECTOR = '[role="dialog"] [contenteditable="true"], [contenteditable="true"]';
+const COMPOSE_TRIGGER_SELECTOR =
+  'text=/what.?s new\\??/i, [aria-label="New thread"]';
+const EDITOR_SELECTOR =
+  '[role="dialog"] [contenteditable="true"], [contenteditable="true"]';
 const POST_BUTTON_SELECTOR = 'button:has-text("Post")';
 const REPLY_ICON_SELECTOR = 'svg[aria-label="Reply"]';
 
@@ -37,38 +47,66 @@ async function persistSession(account, storageState) {
 
 function throwNotConfirmed() {
   const err = new Error(
-    'Still on the login page after submitting credentials — this usually means either the ' +
-      'password is wrong, or (more likely after repeated automated attempts in a short time) ' +
-      'the platform has quietly soft-blocked automated sessions for this account.'
+    "Still on the login page after submitting credentials — this usually means either the " +
+      "password is wrong, or (more likely after repeated automated attempts in a short time) " +
+      "the platform has quietly soft-blocked automated sessions for this account.",
   );
-  err.code = 'LOGIN_NOT_CONFIRMED';
+  err.code = "LOGIN_NOT_CONFIRMED";
   throw err;
 }
 
+async function typeUsernameField(session, username) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    for (const target of USERNAME_SELECTORS) {
+      try {
+        await mcpBrowserService.callTool(session, "browser_type", {
+          element: "username field",
+          target,
+          text: username,
+        });
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    // The login form is client-rendered — wait for it before retrying.
+    await mcpBrowserService.callTool(session, "browser_wait_for", { time: 2 });
+  }
+  throw new Error(
+    "Could not find the username field on the Threads login page — the form may not " +
+      "have finished loading or its layout has changed." +
+      (lastErr ? ` (last error: ${lastErr.message})` : ""),
+  );
+}
+
 async function performLogin(session, username, password) {
-  await mcpBrowserService.callTool(session, 'browser_navigate', { url: LOGIN_URL });
-  await sleep(randomInt(500, 1200));
-  await mcpBrowserService.callTool(session, 'browser_type', {
-    element: 'username field',
-    target: USERNAME_SELECTOR,
-    text: username,
+  await mcpBrowserService.callTool(session, "browser_navigate", {
+    url: LOGIN_URL,
   });
+  await mcpBrowserService.callTool(session, "browser_wait_for", { time: 2 });
+
+  await typeUsernameField(session, username);
   await sleep(randomInt(300, 900));
-  await mcpBrowserService.callTool(session, 'browser_type', {
-    element: 'password field',
+  await mcpBrowserService.callTool(session, "browser_type", {
+    element: "password field",
     target: PASSWORD_SELECTOR,
     text: password,
   });
   await sleep(randomInt(300, 900));
-  await mcpBrowserService.callTool(session, 'browser_click', {
-    element: 'log in button',
+  await mcpBrowserService.callTool(session, "browser_click", {
+    element: "log in button",
     target: SUBMIT_SELECTOR,
   });
   await sleep(randomInt(1500, 3000));
-  const waitText = await mcpBrowserService.callTool(session, 'browser_wait_for', { time: 2 });
+  const waitText = await mcpBrowserService.callTool(
+    session,
+    "browser_wait_for",
+    { time: 2 },
+  );
 
   const url = mcpBrowserService.extractPageUrl(waitText);
-  if ((url || '').toLowerCase().includes('login')) {
+  if ((url || "").toLowerCase().includes("login")) {
     throwNotConfirmed();
   }
 }
@@ -78,11 +116,15 @@ async function performLogin(session, username, password) {
 async function ensureLoggedIn(session, account, password) {
   const stored = loadStoredSession(account);
   if (stored) {
-    const navText = await mcpBrowserService.callTool(session, 'browser_navigate', {
-      url: 'https://www.threads.com/',
-    });
+    const navText = await mcpBrowserService.callTool(
+      session,
+      "browser_navigate",
+      {
+        url: "https://www.threads.com/",
+      },
+    );
     const url = mcpBrowserService.extractPageUrl(navText);
-    if (url && !url.toLowerCase().includes('login')) {
+    if (url && !url.toLowerCase().includes("login")) {
       return;
     }
   }
@@ -108,47 +150,55 @@ async function withSession(account, { headless = true } = {}, fn) {
 }
 
 async function checkAuth(account, password) {
-  await withSession(account, { headless: true }, (session) => ensureLoggedIn(session, account, password));
+  await withSession(account, { headless: true }, (session) =>
+    ensureLoggedIn(session, account, password),
+  );
 }
 
 async function createPost(account, password, text, imagePaths = []) {
   return withSession(account, { headless: true }, async (session) => {
     await ensureLoggedIn(session, account, password);
 
-    await mcpBrowserService.callTool(session, 'browser_navigate', { url: 'https://www.threads.com/' });
+    await mcpBrowserService.callTool(session, "browser_navigate", {
+      url: "https://www.threads.com/",
+    });
     await sleep(randomInt(800, 2000));
 
-    await mcpBrowserService.callTool(session, 'browser_click', {
+    await mcpBrowserService.callTool(session, "browser_click", {
       element: 'compose trigger ("What\'s new?" row or "New thread")',
       target: COMPOSE_TRIGGER_SELECTOR,
     });
     await sleep(randomInt(500, 1200));
 
-    await mcpBrowserService.callTool(session, 'browser_click', {
-      element: 'post text editor',
+    await mcpBrowserService.callTool(session, "browser_click", {
+      element: "post text editor",
       target: EDITOR_SELECTOR,
     });
-    await mcpBrowserService.callTool(session, 'browser_type', {
-      element: 'post text editor',
+    await mcpBrowserService.callTool(session, "browser_type", {
+      element: "post text editor",
       target: EDITOR_SELECTOR,
       text,
       slowly: true,
     });
 
     if (imagePaths.length > 0) {
-      await mcpBrowserService.callTool(session, 'browser_file_upload', { paths: imagePaths });
+      await mcpBrowserService.callTool(session, "browser_file_upload", {
+        paths: imagePaths,
+      });
       await sleep(randomInt(1000, 2000));
     }
 
     await sleep(randomInt(400, 1200));
-    await mcpBrowserService.callTool(session, 'browser_click', {
-      element: 'Post button',
+    await mcpBrowserService.callTool(session, "browser_click", {
+      element: "Post button",
       target: POST_BUTTON_SELECTOR,
     });
     await sleep(randomInt(1500, 3000));
 
     await mcpBrowserService
-      .callTool(session, 'browser_take_screenshot', { filename: 'post-confirmation.png' })
+      .callTool(session, "browser_take_screenshot", {
+        filename: "post-confirmation.png",
+      })
       .catch(() => {});
 
     // Threads doesn't redirect to the new post's permalink after posting — recover
@@ -156,17 +206,24 @@ async function createPost(account, password, text, imagePaths = []) {
     let postUrl = null;
     if (account.username) {
       await mcpBrowserService
-        .callTool(session, 'browser_navigate', { url: `https://www.threads.com/@${account.username}` })
+        .callTool(session, "browser_navigate", {
+          url: `https://www.threads.com/@${account.username}`,
+        })
         .catch(() => {});
       await sleep(randomInt(800, 1500));
       const evalText = await mcpBrowserService
-        .callTool(session, 'browser_evaluate', {
+        .callTool(session, "browser_evaluate", {
           function:
             '() => { const a = document.querySelector(\'a[href*="/post/"]\'); return a ? a.getAttribute("href") : null; }',
         })
         .catch(() => null);
-      const href = evalText ? mcpBrowserService.extractEvalResult(evalText) : null;
-      if (href) postUrl = href.startsWith('http') ? href : `https://www.threads.com${href}`;
+      const href = evalText
+        ? mcpBrowserService.extractEvalResult(evalText)
+        : null;
+      if (href)
+        postUrl = href.startsWith("http")
+          ? href
+          : `https://www.threads.com${href}`;
     }
 
     return { postUrl };
@@ -177,11 +234,16 @@ async function createPost(account, password, text, imagePaths = []) {
 // (each reply is an <article> after the root post) — run in-page through
 // browser_evaluate so no accessibility-tree parsing is needed.
 async function scrapeComments(session, postUrl) {
-  await mcpBrowserService.callTool(session, 'browser_navigate', { url: postUrl });
+  await mcpBrowserService.callTool(session, "browser_navigate", {
+    url: postUrl,
+  });
   await sleep(randomInt(1000, 2500));
 
-  const evalText = await mcpBrowserService.callTool(session, 'browser_evaluate', {
-    function: `() => {
+  const evalText = await mcpBrowserService.callTool(
+    session,
+    "browser_evaluate",
+    {
+      function: `() => {
       const articles = Array.from(document.querySelectorAll('article'));
       return articles.slice(1).map((article) => {
         const authorLink = article.querySelector('a[href^="/@"]');
@@ -193,7 +255,8 @@ async function scrapeComments(session, postUrl) {
         return { author, text };
       }).filter((c) => c.text);
     }`,
-  });
+    },
+  );
 
   return mcpBrowserService.extractEvalResult(evalText) || [];
 }
@@ -205,17 +268,28 @@ async function fetchComments(account, password, postUrl) {
   });
 }
 
-async function replyToComment(account, password, postUrl, commentText, replyText) {
+async function replyToComment(
+  account,
+  password,
+  postUrl,
+  commentText,
+  replyText,
+) {
   return withSession(account, { headless: true }, async (session) => {
     await ensureLoggedIn(session, account, password);
-    await mcpBrowserService.callTool(session, 'browser_navigate', { url: postUrl });
+    await mcpBrowserService.callTool(session, "browser_navigate", {
+      url: postUrl,
+    });
     await sleep(randomInt(1000, 2000));
 
     // Find the article containing this comment's text, then click its own Reply icon
     // — expressed as a single evaluate that returns an index, since MCP's element
     // selectors can't target "the Nth article whose text includes X" directly.
-    const findText = await mcpBrowserService.callTool(session, 'browser_evaluate', {
-      function: `() => {
+    const findText = await mcpBrowserService.callTool(
+      session,
+      "browser_evaluate",
+      {
+        function: `() => {
         const articles = Array.from(document.querySelectorAll('article'));
         const target = ${JSON.stringify(commentText.slice(0, 40))};
         for (let i = 1; i < articles.length; i++) {
@@ -223,35 +297,36 @@ async function replyToComment(account, password, postUrl, commentText, replyText
         }
         return -1;
       }`,
-    });
+      },
+    );
     const index = mcpBrowserService.extractEvalResult(findText);
     if (index === null || index === -1) {
       throw new Error(
-        'Could not find the original comment on the page to reply to — the post layout may ' +
-          'have changed, or the comment was deleted.'
+        "Could not find the original comment on the page to reply to — the post layout may " +
+          "have changed, or the comment was deleted.",
       );
     }
 
     const replySelector = `article:nth-of-type(${index + 1}) ${REPLY_ICON_SELECTOR}`;
-    await mcpBrowserService.callTool(session, 'browser_click', {
-      element: 'reply icon on the comment',
+    await mcpBrowserService.callTool(session, "browser_click", {
+      element: "reply icon on the comment",
       target: replySelector,
     });
     await sleep(randomInt(500, 1200));
 
-    await mcpBrowserService.callTool(session, 'browser_click', {
-      element: 'reply text editor',
+    await mcpBrowserService.callTool(session, "browser_click", {
+      element: "reply text editor",
       target: EDITOR_SELECTOR,
     });
-    await mcpBrowserService.callTool(session, 'browser_type', {
-      element: 'reply text editor',
+    await mcpBrowserService.callTool(session, "browser_type", {
+      element: "reply text editor",
       target: EDITOR_SELECTOR,
       text: replyText,
       slowly: true,
     });
     await sleep(randomInt(400, 1200));
-    await mcpBrowserService.callTool(session, 'browser_click', {
-      element: 'Post/Reply button',
+    await mcpBrowserService.callTool(session, "browser_click", {
+      element: "Post/Reply button",
       target: 'button:has-text("Post"), button:has-text("Reply")',
     });
     await sleep(randomInt(1000, 2500));
@@ -270,10 +345,45 @@ async function openManualBrowser(account, password) {
     profileId: account.profileId || null,
   });
   await ensureLoggedIn(session, account, password);
-  await mcpBrowserService.callTool(session, 'browser_navigate', { url: 'https://www.threads.com/' });
+  await mcpBrowserService.callTool(session, "browser_navigate", {
+    url: "https://www.threads.com/",
+  });
   // Deliberately not closed here — left open for the human to use, closed later
   // via mcpBrowserService.closeSession (see automationController's stopSession).
   return session.id;
+}
+
+// Opens a visible browser at the Threads login page WITHOUT auto-login, so a human
+// can sign in manually (including 2FA/captcha/checkpoint). The resulting session is
+// then captured with captureManualLogin below.
+async function openManualLogin(account) {
+  const session = await mcpBrowserService.startSession({
+    accountId: account._id.toString(),
+    headless: false,
+    storageState: loadStoredSession(account),
+    userAgent: account.userAgent || null,
+    profileId: account.profileId || null,
+  });
+  await mcpBrowserService.callTool(session, "browser_navigate", {
+    url: LOGIN_URL,
+  });
+  return session.id;
+}
+
+// After the human has signed in manually, export cookies/localStorage and persist
+// them so future automated sessions reuse the login without re-authenticating.
+// Reads the current URL without navigating, so it never disturbs the user's window.
+async function captureManualLogin(session, account) {
+  const evalText = await mcpBrowserService.callTool(session, "browser_evaluate", {
+    function: "() => location.href",
+  });
+  const url = mcpBrowserService.extractEvalResult(evalText);
+  if (!url || String(url).toLowerCase().includes("login")) {
+    return { loggedIn: false, url: url || null };
+  }
+  const storageState = await mcpBrowserService.saveStorageState(session);
+  await persistSession(account, storageState);
+  return { loggedIn: true, url };
 }
 
 module.exports = {
@@ -282,5 +392,7 @@ module.exports = {
   fetchComments,
   replyToComment,
   openManualBrowser,
+  openManualLogin,
+  captureManualLogin,
   makeCommentKey,
 };
