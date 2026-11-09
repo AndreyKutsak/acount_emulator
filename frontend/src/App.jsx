@@ -11,6 +11,7 @@ import TelegramPage from "./pages/TelegramPage";
 import DashboardPage from "./pages/DashboardPage";
 import AndroidPage from "./pages/AndroidPage";
 import HelpPage from "./pages/HelpPage";
+import ProfilesPage from "./pages/ProfilesPage";
 
 function ItemsPage() {
   const [items, setItems] = useState([]);
@@ -68,18 +69,19 @@ function ItemsPage() {
 
 const TABS = [
   { id: "dashboard", label: "Огляд", Component: DashboardPage },
+  { id: "profiles", label: "Профілі", Component: ProfilesPage },
   { id: "help", label: "📘 Інструкція", Component: HelpPage },
   { id: "posts", label: "Пости", Component: PostsPage },
   {
     id: "threads-comments",
-    label: "Коментарі Threads",
+    label: "Коментарі",
     Component: ThreadsCommentsPage,
   },
   { id: "accounts", label: "Акаунти", Component: SocialAccountsPage },
   { id: "telegram", label: "Telegram", Component: TelegramPage },
-  { id: "android", label: "Android емулятор", Component: AndroidPage },
+  { id: "android", label: "Android", Component: AndroidPage },
   { id: "vpn", label: "VPN сервери", Component: VpnServersPage },
-  { id: "items", label: "Елементи", Component: ItemsPage },
+  { id: "items", label: "Інші", Component: ItemsPage },
 ];
 
 export default function App() {
