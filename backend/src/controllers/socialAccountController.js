@@ -47,6 +47,7 @@ exports.createAccount = async (req, res, next) => {
       userAgent,
       profileId,
       androidProfileId,
+      androidSerial,
       proxyConfig,
     } = req.body;
     if (!username || !password) {
@@ -64,6 +65,7 @@ exports.createAccount = async (req, res, next) => {
       userAgent: userAgent || "",
       profileId: profileId || "windows_chrome",
       androidProfileId: androidProfileId || "",
+      androidSerial: androidSerial || "",
       proxyConfig: proxyConfig || null,
     });
     res.status(201).json(toSafeAccount(account));
@@ -84,12 +86,14 @@ exports.updateAccount = async (req, res, next) => {
       userAgent,
       profileId,
       androidProfileId,
+      androidSerial,
       proxyConfig,
     } = req.body;
     const update = { platform, displayName, username, vpnServer, notes };
     if (userAgent !== undefined) update.userAgent = userAgent;
     if (profileId !== undefined) update.profileId = profileId;
     if (androidProfileId !== undefined) update.androidProfileId = androidProfileId;
+    if (androidSerial !== undefined) update.androidSerial = androidSerial;
     if (proxyConfig !== undefined) update.proxyConfig = proxyConfig;
     if (password) update.passwordEncrypted = encrypt(password);
 

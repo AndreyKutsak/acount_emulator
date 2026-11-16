@@ -54,6 +54,13 @@ module.exports = {
 
   health: () => call("GET", "/health"),
   devices: () => call("GET", "/devices"),
+  // Усі adb-пристрої (і unauthorized/offline) з моделлю, екраном, блокуванням і
+  // наявністю потрібних застосунків.
+  devicesDetailed: (pkg) =>
+    call("GET", "/devices", { query: { details: true, package: pkg }, timeoutMs: 30000 }),
+  // Один пристрій: { ready, state, hint, apps: [{package, installed, version}] }
+  deviceCheck: (serial, pkg) =>
+    call("GET", "/device/check", { query: { serial, package: pkg }, timeoutMs: 30000 }),
   info: (serial) => call("GET", "/info", { query: { serial } }),
 
   // --- застосунки ---
@@ -75,8 +82,21 @@ module.exports = {
 
   // --- поведінки (flows) ---
   // publish=false => заповнити композер, але НЕ публікувати (безпечний тест)
+  // Довгий виклик: після холодного старту потік спершу чекає звільнення черги
+  // broadcast-ів Android (до 8 хв), а вже потім вводить текст.
   threadsPost: (text, publish = true, serial) =>
-    call("POST", "/behavior/threads-post", { body: { text, publish, serial } }),
+    call("POST", "/behavior/threads-post", {
+      body: { text, publish, serial },
+      timeoutMs: 900000,
+    }),
+
+  // Метрики останніх дописів зі «Статистики» Threads (нічого не публікує).
+  // -> { posts: [{ text, views, likes, replies, reposts, shares }] }
+  threadsMetrics: (serial) =>
+    call("POST", "/behavior/threads-metrics", {
+      body: { serial },
+      timeoutMs: 300000,
+    }),
 
   // --- профіль маскування пристрою (Шар A/Б) ---
   // key — ключ сховища (напр. ManyFaces profileId) для per-профіль конфігу;

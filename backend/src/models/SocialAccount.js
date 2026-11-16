@@ -34,6 +34,13 @@ const socialAccountSchema = new mongoose.Schema(
     // застосовує його профіль маскування (device_profiles.json, ключ = цей id),
     // виконує дію (напр. пост), закриває застосунок і гасить емулятор.
     androidProfileId: { type: String, default: "" },
+    // Фізичний телефон, підключений по adb (USB-серіал або ip:port для Wi-Fi).
+    // Якщо задано — оркестратор працює з ним напряму: без запуску/зупинки
+    // емулятора й без маскування; має пріоритет над androidProfileId.
+    androidSerial: { type: String, default: "" },
+    // Коли востаннє збирали метрики дописів зі «Статистики» Threads на емуляторі
+    // (services/androidMetrics.js) — шедулер повторює не частіше ANDROID_METRICS_INTERVAL_MS.
+    androidMetricsAt: { type: Date, default: null },
     // Optional per-account proxy override. May contain credentials, so it is
     // stripped from every client-facing response (toSafeAccount).
     proxyConfig: { type: mongoose.Schema.Types.Mixed, default: null },

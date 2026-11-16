@@ -9,7 +9,9 @@ Android automation bridge — HTTP API поверх uiautomator2.
 
 Ендпоінти (усі під /):
     GET  /health                      — живий + поточний пристрій
-    GET  /devices                     — список adb-пристроїв
+    GET  /devices                     — список adb-пристроїв (готових)
+    GET  /devices?details=true        — усі пристрої: тип, модель, екран, блокування, застосунки
+    GET  /device/check?serial=…       — чи пристрій готовий (авторизований, Threads встановлено)
     GET  /info                        — інфо про пристрій
     POST /app/install  {source}       — встановити APK (локальний шлях або http-URL)
     POST /app/start    {package}      — запустити застосунок
@@ -21,14 +23,19 @@ Android automation bridge — HTTP API поверх uiautomator2.
     POST /type         {text, resource_id?} — ввести текст (у поле за id або активне)
     POST /press        {key}          — апаратна клавіша (home/back/enter/…)
     POST /swipe        {direction}    — свайп up/down/left/right
+    POST /behavior/threads-post   {text, publish?} — пост у Threads
+    POST /behavior/threads-metrics {serial?}       — метрики останніх дописів
     GET  /screenshot                  — PNG поточного екрана
     GET  /hierarchy                   — XML усього UI-дерева
 """
 from __future__ import annotations
 
 import io
+import logging
 import os
+import re
 import threading
+import time
 from typing import Any, Optional
 
 import uiautomator2 as u2
@@ -45,6 +52,26 @@ HOST = os.environ.get("ANDROID_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("ANDROID_BRIDGE_PORT", "8900"))
 
 app = FastAPI(title="Android automation bridge")
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+log = logging.getLogger("bridge")
+# Опитування панелі — шум; логуємо їх лише коли щось пішло не так.
+_QUIET_PATHS = {"/health", "/screenshot", "/hierarchy", "/devices", "/app/current"}
+
+
+@app.middleware("http")
+async def _log_requests(request, call_next):
+    t0 = time.monotonic()
+    try:
+        resp = await call_next(request)
+    except Exception:
+        log.exception("%s %s crashed", request.method, request.url.path)
+        raise
+    ms = (time.monotonic() - t0) * 1000
+    if resp.status_code >= 400 or request.url.path not in _QUIET_PATHS:
+        log.info("%s %s %s -> %s (%.0f ms)", request.method, request.url.path,
+                 request.url.query, resp.status_code, ms)
+    return resp
 
 # Один підключений пристрій на serial, щоб не перепідключатись на кожен запит.
 _devices: dict[str, u2.Device] = {}
@@ -171,13 +198,124 @@ def health() -> dict[str, Any]:
         return {"ok": True, "serial": serial, "connected": False}
 
 
-@app.get("/devices")
-def devices() -> dict[str, Any]:
+REQUIRED_PACKAGES = [flows.THREADS_PKG]
+
+# Підказки для станів adb, у яких керувати пристроєм ще не можна.
+_STATE_HINTS = {
+    "unauthorized": "підтвердіть «Дозволити налагодження по USB» на екрані телефона",
+    "offline": "пристрій не відповідає — перепідключіть кабель або перезапустіть adb",
+    "no permissions": "немає прав на USB-пристрій (драйвер/udev)",
+    "authorizing": "очікує підтвердження на телефоні",
+}
+
+
+def _is_emulator(serial: str) -> bool:
     import adbutils
-    out = []
-    for dv in adbutils.adb.device_list():
-        out.append({"serial": dv.serial, "state": "device"})
-    return {"devices": out, "default": DEFAULT_SERIAL}
+
+    if serial.startswith("emulator-"):
+        return True
+    try:
+        return adbutils.adb.device(serial).getprop("ro.kernel.qemu") == "1"
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _package_info(ad: Any, pkg: str) -> dict[str, Any]:
+    """Чи встановлений застосунок і яка версія (без uiautomator, лише adb shell)."""
+    path = ad.shell(f"pm path {pkg}", timeout=10).strip()
+    if not path.startswith("package:"):
+        return {"package": pkg, "installed": False}
+    out = ad.shell(f"dumpsys package {pkg} | grep -m2 -E 'versionName=|versionCode='", timeout=10)
+    name = re.search(r"versionName=(\S+)", out)
+    code = re.search(r"versionCode=(\d+)", out)
+    return {"package": pkg, "installed": True,
+            "version": name.group(1) if name else None,
+            "versionCode": int(code.group(1)) if code else None}
+
+
+def _device_details(serial: str, state: str, tags: dict[str, str],
+                    packages: list[str]) -> dict[str, Any]:
+    """Опис adb-пристрою для панелі: тип, модель, екран, блокування, застосунки."""
+    import adbutils
+
+    out: dict[str, Any] = {
+        "serial": serial,
+        "state": state,
+        "emulator": serial.startswith("emulator-"),
+        "model": (tags.get("model") or "").replace("_", " ") or None,
+        "wifi": ":" in serial,                     # adb connect ip:port
+    }
+    if state != "device":
+        out["ready"] = False
+        out["hint"] = _STATE_HINTS.get(state, f"стан adb: {state}")
+        return out
+    try:
+        ad = adbutils.adb.device(serial)
+        sep = "@@@"
+        raw = ad.shell(
+            f"getprop ro.product.manufacturer; echo {sep}; getprop ro.product.model; echo {sep};"
+            f" getprop ro.build.version.release; echo {sep}; getprop ro.build.version.sdk; echo {sep};"
+            f" getprop ro.kernel.qemu; echo {sep}; wm size; echo {sep};"
+            f" dumpsys power | grep -m1 -E 'mWakefulness='; echo {sep}; {flows.KEYGUARD_CMD}",
+            timeout=15,
+        )
+        parts = [p.strip() for p in raw.split(sep)]
+        parts += [""] * (8 - len(parts))
+        manuf, model, release, sdk, qemu, wm, power, keyguard = parts[:8]
+        size = re.search(r"Override size:\s*(\d+)x(\d+)", wm) or re.search(r"(\d+)x(\d+)", wm)
+        out.update({
+            "manufacturer": manuf or None,
+            "model": model or out["model"],
+            "android_version": release or None,
+            "sdk": int(sdk) if sdk.isdigit() else None,
+            "emulator": out["emulator"] or qemu == "1",
+            "width": int(size.group(1)) if size else None,
+            "height": int(size.group(2)) if size else None,
+            "screen_on": ("Awake" in power) if power else None,
+            "locked": flows.keyguard_showing(keyguard),
+            "apps": [_package_info(ad, p) for p in packages],
+        })
+        missing = [a["package"] for a in out["apps"] if not a["installed"]]
+        out["ready"] = not missing
+        if missing:
+            out["hint"] = "не встановлено: " + ", ".join(missing)
+    except Exception as exc:  # noqa: BLE001
+        out["ready"] = False
+        out["hint"] = f"не вдалося опитати пристрій: {exc}"
+    return out
+
+
+@app.get("/devices")
+def devices(details: bool = False, package: Optional[str] = None) -> dict[str, Any]:
+    """Пристрої в adb.
+
+    Без details — лише готові до роботи (стан 'device'), як і раніше (цим
+    користується оркестратор). details=true — усі пристрої, включно з
+    unauthorized/offline, з моделлю, екраном, блокуванням і наявністю
+    потрібних застосунків (package=… додає ще один пакет до перевірки).
+    """
+    import adbutils
+
+    if not details:
+        out = [{"serial": dv.serial, "state": "device"} for dv in adbutils.adb.device_list()]
+        return {"devices": out, "default": DEFAULT_SERIAL}
+    pkgs = REQUIRED_PACKAGES + ([package] if package and package not in REQUIRED_PACKAGES else [])
+    out = [_device_details(i.serial, i.state, i.tags, pkgs) for i in adbutils.adb.list(extended=True)]
+    return {"devices": out, "default": DEFAULT_SERIAL, "required": pkgs}
+
+
+@app.get("/device/check")
+def device_check(serial: str, package: Optional[str] = None) -> dict[str, Any]:
+    """Перевірити один пристрій: підключений і авторизований, потрібні
+    застосунки встановлені (ready=true — можна запускати сценарії)."""
+    import adbutils
+
+    pkgs = REQUIRED_PACKAGES + ([package] if package and package not in REQUIRED_PACKAGES else [])
+    for i in adbutils.adb.list(extended=True):
+        if i.serial == serial:
+            return _device_details(i.serial, i.state, i.tags, pkgs)
+    return {"serial": serial, "state": "absent", "ready": False,
+            "hint": "пристрою немає в adb — підключіть кабель (або adb connect ip:port для Wi-Fi)"}
 
 
 @app.get("/info")
@@ -298,20 +436,52 @@ def swipe(body: SwipeBody) -> dict[str, Any]:
     return {"swiped": body.direction}
 
 
+_behavior_locks: dict[str, threading.Lock] = {}
+_behavior_guard = threading.Lock()
+
+
 class ThreadsPostBody(BaseModel):
     text: str
     publish: bool = True          # False = заповнити композер, але НЕ публікувати
     serial: Optional[str] = None
 
 
+def _run_behavior(name: str, d: u2.Device, fn, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Виконати поведінку ексклюзивно на пристрої: два сценарії на одному
+    пристрої перезапускають Threads один одному."""
+    with _behavior_guard:
+        lk = _behavior_locks.setdefault(d.serial, threading.Lock())
+    if not lk.acquire(blocking=False):
+        log.warning("%s rejected serial=%s: another behavior is running", name, d.serial)
+        raise HTTPException(409, f"device {d.serial} is busy with another behavior")
+    try:
+        return fn(d, *args, **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("%s failed serial=%s", name, d.serial)
+        raise HTTPException(400, f"{name}: {exc}")
+    finally:
+        lk.release()
+
+
 @app.post("/behavior/threads-post")
 def behavior_threads_post(body: ThreadsPostBody) -> dict[str, Any]:
     """Поведінка: створити пост у Threads (див. flows.threads_post)."""
     d = dev(body.serial)
-    try:
-        return flows.threads_post(d, body.text, publish=body.publish)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, f"threads_post: {exc}")
+    log.info("threads_post start serial=%s publish=%s len=%d", d.serial, body.publish, len(body.text))
+    return _run_behavior("threads_post", d, flows.threads_post, body.text, publish=body.publish)
+
+
+class SerialBody(BaseModel):
+    serial: Optional[str] = None
+
+
+@app.post("/behavior/threads-metrics")
+def behavior_threads_metrics(body: Optional[SerialBody] = None) -> dict[str, Any]:
+    """Поведінка: зчитати перегляди/лайки/відповіді останніх дописів зі
+    «Статистики» Threads (див. flows.threads_metrics). Нічого не публікує."""
+    d = dev(body.serial if body else None)
+    log.info("threads_metrics start serial=%s", d.serial)
+    return _run_behavior("threads_metrics", d, flows.threads_metrics)
 
 
 # ----------------------------------------- профіль маскування пристрою ----
@@ -350,6 +520,13 @@ def device_current(serial: Optional[str] = None) -> dict[str, Any]:
     return device_profile.read_current(serial or DEFAULT_SERIAL)
 
 
+def _only_emulator(serial: str) -> None:
+    """Маскування міняє wm size/density і системні пропси — на справжньому
+    телефоні це зіпсує його екран, а маскувати там нічого: пристрій і так справжній."""
+    if not _is_emulator(serial):
+        raise HTTPException(400, f"{serial} — фізичний телефон: маскування пристрою доступне лише для емуляторів")
+
+
 @app.post("/device/apply")
 def device_apply(body: Optional[DeviceProfileBody] = None) -> dict[str, Any]:
     """Застосувати профіль до запущеного пристрою (повертає по-полевий статус).
@@ -357,6 +534,7 @@ def device_apply(body: Optional[DeviceProfileBody] = None) -> dict[str, Any]:
     serial — adb-ціль; key — ключ сховища (per-профіль), якщо profile не передано.
     """
     serial = (body.serial if body else None) or DEFAULT_SERIAL
+    _only_emulator(serial)
     prof = body.profile if (body and body.profile) else None
     key = body.key if body else None
     try:
@@ -373,6 +551,7 @@ def device_apply_persistent(body: Optional[DeviceProfileBody] = None) -> dict[st
     key — ключ сховища (per-профіль), якщо profile не передано.
     """
     serial = (body.serial if body else None) or DEFAULT_SERIAL
+    _only_emulator(serial)
     prof = body.profile if (body and body.profile) else None
     key = body.key if body else None
     try:
@@ -403,7 +582,12 @@ def media_push(body: MediaBody) -> dict[str, Any]:
 
 @app.get("/screenshot")
 def screenshot(serial: Optional[str] = None) -> Response:
-    img = dev(serial).screenshot()        # PIL.Image
+    try:
+        img = dev(serial).screenshot()    # PIL.Image
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - агент uiautomator2 недоступний
+        raise HTTPException(503, f"screenshot: {exc}")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")

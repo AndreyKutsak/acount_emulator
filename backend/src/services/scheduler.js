@@ -9,6 +9,7 @@ const publishStrategies = require("./publishStrategies");
 const scrapeStrategies = require("./scrapeStrategies");
 const androidBridge = require("./androidBridgeService");
 const androidOrchestrator = require("./androidOrchestrator");
+const androidMetrics = require("./androidMetrics");
 const { downloadAllToTempFiles, cleanupTempFiles } = require("./tempDownload");
 const { captureAuthDebug } = require("./authDebugService");
 const { isResting, scheduleRest, sleep, randomInt } = require("./humanize");
@@ -36,10 +37,16 @@ const ANDROID_THREADS_POSTING = process.env.ANDROID_THREADS_POSTING === "true";
 // Запобіжник: якщо false — планувальник ЗАПОВНЮЄ композер, але НЕ натискає Post
 // (безпечний прогін розкладу без реальних публікацій). true = реальна публікація.
 const ANDROID_THREADS_PUBLISH = process.env.ANDROID_THREADS_PUBLISH !== "false";
-// Коли акаунт має androidProfileId — публікація йде через оркестратор: піднятти
+// Коли акаунт має телефон (androidSerial — фізичний, androidProfileId — емулятор ManyFaces) — публікація йде через оркестратор: піднятти
 // саме його профіль-телефон, запостити, закрити застосунок і згасити емулятор.
 // ANDROID_STOP_AFTER_POST=false лишає емулятор увімкненим після поста.
 const ANDROID_STOP_AFTER_POST = process.env.ANDROID_STOP_AFTER_POST !== "false";
+// Як часто (на акаунт) збирати перегляди/лайки/відповіді зі «Статистики» Threads
+// на емуляторі. Кожен збір піднімає телефон (~2-3 хв), тож не частіше кількох
+// годин. ANDROID_METRICS_INTERVAL_MS=0 вимикає автоматичний збір.
+const ANDROID_METRICS_INTERVAL_MS = Number(
+  process.env.ANDROID_METRICS_INTERVAL_MS ?? 6 * 60 * 60 * 1000,
+);
 
 // Kept in sync with automationController.recordAuthResult — records whether a login
 // (or a publish that includes a login) succeeded, so the account table reflects the
@@ -72,6 +79,7 @@ async function publishToAccount(post, account, entry) {
 
   const postText = post.text;
   const urls = post.images || [];
+  console.log(`${new Date().toISOString()} [scheduler] publish start post=${post._id} account=${account.username}`);
 
   try {
     if (account.platform === "threads") {
@@ -81,7 +89,7 @@ async function publishToAccount(post, account, entry) {
         const publishReal = ANDROID_THREADS_PUBLISH;
         let result;
         let via;
-        if (account.androidProfileId) {
+        if (androidOrchestrator.hasPhone(account)) {
           // Повний життєвий цикл на власному профілі-телефоні акаунта.
           result = await androidOrchestrator.runForAccount(
             account,
@@ -102,6 +110,10 @@ async function publishToAccount(post, account, entry) {
         }
         account.restUntil = scheduleRest();
         await account.save();
+        console.log(
+          `${new Date().toISOString()} [scheduler] publish ok post=${post._id} account=${account.username}`,
+          `via=${via} confirmed=${result?.result?.confirmed ?? result?.confirmed}`,
+        );
         return {
           published: publishReal,
           via,
@@ -177,6 +189,16 @@ async function publishToAccount(post, account, entry) {
       await browserService.closeSession(session.id);
     }
   } catch (err) {
+    if (err.code === "PROFILE_BUSY") {
+      console.log(
+        `${new Date().toISOString()} [scheduler] publish skipped post=${post._id} account=${account.username}: phone busy`,
+      );
+      return { published: false, skipped: "busy" };
+    }
+    console.error(
+      `${new Date().toISOString()} [scheduler] publish FAILED post=${post._id} account=${account.username}:`,
+      err.message,
+    );
     entry.status = "failed";
     await post.save();
     await recordAuthResult(account, false, err).catch(() => {});
@@ -194,7 +216,7 @@ async function publishDuePosts() {
     accounts: { $elemMatch: { status: "pending" } },
   }).populate(
     "accounts.account",
-    "platform username displayName userAgent profileId androidProfileId",
+    "platform username displayName userAgent profileId androidProfileId androidSerial",
   );
 
   const summary = [];
@@ -313,6 +335,44 @@ async function refreshPublishedMetrics() {
   return summary;
 }
 
+// Метрики постів, опублікованих через Android (у них немає postUrl для веб-
+// скрапера): раз на ANDROID_METRICS_INTERVAL_MS піднімаємо телефон акаунта й
+// читаємо «Статистику» Threads. Лише для акаунтів зі свіжими публікаціями.
+async function refreshAndroidMetrics() {
+  if (!ANDROID_THREADS_POSTING || !(ANDROID_METRICS_INTERVAL_MS > 0)) return [];
+  const accounts = await SocialAccount.find({
+    platform: "threads",
+    $or: [
+      { androidProfileId: { $nin: [null, ""] } },
+      { androidSerial: { $nin: [null, ""] } },
+    ],
+  });
+  const summary = [];
+  for (const account of accounts) {
+    const last = account.androidMetricsAt ? account.androidMetricsAt.getTime() : 0;
+    if (Date.now() - last < ANDROID_METRICS_INTERVAL_MS) continue;
+    if (isResting(account)) continue;
+    if (!(await androidMetrics.hasRecentPublished(account._id))) continue;
+    try {
+      const r = await androidMetrics.collectForAccount(account, {
+        stopAfter: ANDROID_STOP_AFTER_POST,
+      });
+      summary.push({ username: account.username, refreshed: true, matched: r.matched.length });
+    } catch (err) {
+      if (err.code === "PROFILE_BUSY") continue; // повторимо на наступному тіку
+      console.error(
+        `${new Date().toISOString()} [scheduler] android metrics FAILED account=${account.username}:`,
+        err.message,
+      );
+      // Не довбати зламаний телефон щотіку — наступна спроба через інтервал.
+      account.androidMetricsAt = new Date();
+      await account.save().catch(() => {});
+      summary.push({ username: account.username, error: err.message });
+    }
+  }
+  return summary;
+}
+
 // Fetches new comments for every published threads post. Reuses the MCP-driven
 // scraper (threadsMcpService.fetchComments) and upserts into ThreadsComment keyed by
 // (account, postUrl, author+text hash) so re-scans don't duplicate rows.
@@ -402,6 +462,7 @@ async function tick() {
     };
     lastSummary.published = await publishDuePosts();
     lastSummary.metrics = await refreshPublishedMetrics();
+    lastSummary.metrics.push(...(await refreshAndroidMetrics()));
     lastSummary.comments = await fetchThreadsComments();
     lastRunAt = new Date();
     logSummary();

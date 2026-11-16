@@ -51,6 +51,8 @@ exports.listAndroidProfiles = async () => {
       name: p.name,
       status: p.status,
       running: p.running,
+      // undefined = ManyFaces ще не віддає серіал; null = профіль не запущений.
+      serial: p.serial,
     }));
 };
 

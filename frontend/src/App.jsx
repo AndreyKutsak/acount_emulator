@@ -86,26 +86,79 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState("dashboard");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const Active = TABS.find((t) => t.id === tab).Component;
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileMenuOpen]);
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-name">Treds</div>
-          <div className="brand-tag">SMM агенція</div>
+      <header className="mobile-header">
+        <div className="mobile-brand">
+          <span className="brand-name">Treds</span>
+          <span className="brand-tag">SMM агенція</span>
         </div>
-        <nav className="nav">
+        <button
+          type="button"
+          className="mobile-menu-toggle"
+          aria-label={mobileMenuOpen ? "Закрити меню" : "Відкрити меню"}
+          aria-expanded={mobileMenuOpen}
+          aria-controls="app-navigation"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+        >
+          {mobileMenuOpen ? (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          )}
+        </button>
+      </header>
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Закрити меню"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      <aside className={`sidebar${mobileMenuOpen ? " mobile-open" : ""}`}>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">T</span>
+          <div>
+            <div className="brand-name">Treds</div>
+            <div className="brand-tag">SMM агенція</div>
+          </div>
+        </div>
+        <div className="sidebar-section-label">Робочий простір</div>
+        <nav className="nav" id="app-navigation" aria-label="Основна навігація">
           {TABS.map((t) => (
             <button
               key={t.id}
               className={`nav-item${tab === t.id ? " active" : ""}`}
-              onClick={() => setTab(t.id)}
+              aria-current={tab === t.id ? "page" : undefined}
+              onClick={() => {
+                setTab(t.id);
+                setMobileMenuOpen(false);
+              }}
             >
               {t.label}
             </button>
           ))}
         </nav>
+        <div className="sidebar-footer">Панель керування</div>
       </aside>
       <main className="main">
         <Active />

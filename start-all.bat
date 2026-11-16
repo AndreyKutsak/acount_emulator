@@ -6,6 +6,7 @@ REM   Зупинити все - просто закрити тi вiкна.
 REM ============================================================
 title Treds launcher
 cd /d "%~dp0"
+set PYTHONUNBUFFERED=1
 
 echo ============================================================
 echo   Запуск проекту Treds
@@ -29,10 +30,10 @@ REM --- Frontend: React/Vite :5173 ---
 start "Treds Frontend :5173" cmd /k "cd /d %~dp0frontend && npm run dev"
 
 REM --- ManyFaces: емулятори :8000 (легкий Android-пресет) ---
-start "ManyFaces :8000" cmd /k "cd /d %~dp0backend\ManyFaces && set ANTIDETECT_ANDROID_IMAGE=system-images;android-29;google_apis;x86_64&& set ANTIDETECT_ANDROID_MEMORY=1536&& set ANTIDETECT_ANDROID_CORES=2&& set ANTIDETECT_ANDROID_GPU=host&& .venv\Scripts\python.exe run.py"
+start "ManyFaces :8000" cmd /k "cd /d %~dp0backend\ManyFaces && set ANTIDETECT_ANDROID_IMAGE=system-images;android-29;google_apis;x86_64&& set ANTIDETECT_ANDROID_MEMORY=1536&& set ANTIDETECT_ANDROID_CORES=4&& set ANTIDETECT_ANDROID_GPU=host&& .venv\Scripts\python.exe run.py"
 
 REM --- Android bridge + панель керування :8900 ---
-start "Android Bridge :8900" cmd /k "cd /d %~dp0automation && .venv\Scripts\python.exe bridge.py"
+start "Android Bridge :8900" cmd /k "cd /d %~dp0automation && set ADBUTILS_ADB_PATH=%USERPROFILE%\.antidetect\android\sdk\platform-tools\adb.exe&& .venv\Scripts\python.exe bridge.py"
 
 echo   Вiдкрито 4 вiкна сервiсiв. Адреси:
 echo     Frontend (додаток)   http://localhost:5173
