@@ -1314,6 +1314,159 @@ table {
   margin-top: 14px;
 }
 
+/* Завантаження файлів на пристрій (APK, фото/відео) */
+.upload-progress {
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.upload-progress > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.upload-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.upload-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.upload-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.upload-list .upload-progress {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
+.upload-name {
+  flex: 1 1 140px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-state {
+  min-width: 72px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.upload-ok {
+  color: var(--success);
+}
+
+.upload-err {
+  color: var(--danger);
+}
+
+.upload-error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Акаунти поста: хто публікує і метрики кожної публікації окремо */
+.post-accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.post-account {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  gap: 6px 16px;
+  align-items: center;
+  padding: 10px 0;
+  font-size: 13px;
+}
+
+.post-account + .post-account {
+  border-top: 1px dashed var(--border);
+}
+
+.post-account-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.post-account-platform {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.post-account-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.post-account-metrics {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.post-account-metrics strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.post-account-updated {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+@media (max-width: 640px) {
+  .post-account {
+    grid-template-columns: 1fr;
+  }
+
+  .post-account-status {
+    justify-content: flex-start;
+  }
+
+  .post-account-updated {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}
+
 .post-card-details {
   padding: 16px;
   border-top: 1px solid var(--border);

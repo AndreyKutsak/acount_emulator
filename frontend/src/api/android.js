@@ -11,6 +11,23 @@ export const emulatorStart = (profileId) =>
 export const emulatorStop = (profileId) =>
   api.post("/android/emulator/stop", { profileId }).then((r) => r.data);
 
+// --- файли з провідника: тіло — сам файл, бекенд пише його потоком на диск ---
+const uploadFile = (path, file, serial, onProgress) =>
+  api
+    .post(path, file, {
+      params: { name: file.name, serial: serial || undefined },
+      headers: { "Content-Type": "application/octet-stream" },
+      timeout: 0,
+      onUploadProgress: (e) => onProgress?.(e.total ? e.loaded / e.total : 0),
+    })
+    .then((r) => r.data);
+// Завантажити APK/XAPK і встановити на пристрій.
+export const androidUploadApk = (file, serial, onProgress) =>
+  uploadFile("/android/upload/apk", file, serial, onProgress);
+// Завантажити фото/відео в галерею пристрою (DCIM/Camera).
+export const androidUploadMedia = (file, serial, onProgress) =>
+  uploadFile("/android/upload/media", file, serial, onProgress);
+
 // --- підключені adb-пристрої (фізичні телефони) ---
 export const androidPhones = () =>
   api.get("/android/phones", { timeout: 40000 }).then((r) => r.data);
@@ -33,11 +50,12 @@ export const androidStartApp = (pkg) =>
   api.post("/android/app/start", { package: pkg }).then((r) => r.data);
 export const androidStopApp = (pkg) =>
   api.post("/android/app/stop", { package: pkg }).then((r) => r.data);
-export const androidInstall = (source) =>
-  api.post("/android/app/install", { source }).then((r) => r.data);
+// serial — цільовий пристрій (без нього — пристрій мосту за замовчуванням).
+export const androidInstall = (source, serial) =>
+  api.post("/android/app/install", { source, serial }, { timeout: 0 }).then((r) => r.data);
 // Залити фото/відео з ПК у галерею (source — локальний шлях на хості бекенда/моста).
-export const androidPushMedia = (source) =>
-  api.post("/android/media/push", { source }, { timeout: 200000 }).then((r) => r.data);
+export const androidPushMedia = (source, serial) =>
+  api.post("/android/media/push", { source, serial }, { timeout: 200000 }).then((r) => r.data);
 
 export const androidTap = (x, y) =>
   api.post("/android/tap", { x, y }).then((r) => r.data);

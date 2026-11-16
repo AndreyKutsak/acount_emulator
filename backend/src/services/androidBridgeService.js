@@ -64,7 +64,9 @@ module.exports = {
   info: (serial) => call("GET", "/info", { query: { serial } }),
 
   // --- застосунки ---
-  installApp: (source, serial) => call("POST", "/app/install", { body: { source, serial } }),
+  // Встановлення великого APK/XAPK (Threads ~100+ МБ) на телефон триває хвилини.
+  installApp: (source, serial) =>
+    call("POST", "/app/install", { body: { source, serial }, timeoutMs: 600000 }),
   startApp: (pkg, serial) => call("POST", "/app/start", { body: { package: pkg, serial } }),
   stopApp: (pkg, serial) => call("POST", "/app/stop", { body: { package: pkg, serial } }),
   currentApp: (serial) => call("GET", "/app/current", { query: { serial } }),

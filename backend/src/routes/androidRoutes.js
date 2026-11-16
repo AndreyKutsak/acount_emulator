@@ -15,6 +15,10 @@ router.get("/phones", c.phones);
 router.get("/phones/check", c.phoneCheck);
 router.post("/phones/bind", c.phoneBind);
 
+// Файли з браузера (провідник Windows): тіло — сирий файл, ім'я в ?name=
+router.post("/upload/apk", c.uploadApk);
+router.post("/upload/media", c.uploadMedia);
+
 router.get("/health", c.health);
 router.get("/devices", c.devices);
 router.get("/info", c.info);
