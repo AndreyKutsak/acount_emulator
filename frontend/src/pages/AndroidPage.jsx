@@ -5,8 +5,6 @@ import {
   androidApps,
   androidStartApp,
   androidStopApp,
-  androidInstall,
-  androidPushMedia,
   androidTap,
   androidType,
   androidPress,
@@ -19,6 +17,7 @@ import EmulatorControl from "../components/EmulatorControl";
 import DeviceSpoofPanel from "../components/DeviceSpoofPanel";
 import OrchestrationPanel from "../components/OrchestrationPanel";
 import PhonesPanel from "../components/PhonesPanel";
+import DeviceUploads from "../components/DeviceUploads";
 
 export default function AndroidPage() {
   const [info, setInfo] = useState(null);
@@ -28,8 +27,6 @@ export default function AndroidPage() {
   const [selectedApp, setSelectedApp] = useState("");
   const [allApps, setAllApps] = useState(false);
   const [typeText, setTypeText] = useState("");
-  const [apkSource, setApkSource] = useState("");
-  const [mediaSource, setMediaSource] = useState("");
   const [postText, setPostText] = useState("");
   const [publish, setPublish] = useState(false);
   const [shot, setShot] = useState(androidScreenshotUrl());
@@ -261,54 +258,8 @@ export default function AndroidPage() {
             </label>
           </div>
 
-          {/* ВСТАНОВЛЕННЯ APK */}
-          <div className="card">
-            <div className="card-title">Встановити APK</div>
-            <div className="form-actions">
-              <input
-                value={apkSource}
-                onChange={(e) => setApkSource(e.target.value)}
-                placeholder="C:\шлях\app.apk або https://…/app.apk"
-                style={{ flex: 1 }}
-              />
-              <button
-                className="btn btn-primary"
-                disabled={busy || !apkSource.trim()}
-                onClick={() => run(() => androidInstall(apkSource.trim()), "Встановлено").then(loadApps)}
-              >
-                Встановити
-              </button>
-            </div>
-            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-              Образ x86_64: потрібен x86/universal APK (ARM-only не стане).
-            </p>
-          </div>
-
-          {/* ДОДАТИ В ГАЛЕРЕЮ (з ПК) */}
-          <div className="card">
-            <div className="card-title">Додати фото/відео в галерею (з ПК)</div>
-            <div className="form-actions">
-              <input
-                value={mediaSource}
-                onChange={(e) => setMediaSource(e.target.value)}
-                placeholder="C:\шлях\photo.jpg"
-                style={{ flex: 1 }}
-              />
-              <button
-                className="btn btn-primary"
-                disabled={busy || !mediaSource.trim()}
-                onClick={() =>
-                  run(() => androidPushMedia(mediaSource.trim()), "Додано в галерею")
-                }
-              >
-                Залити
-              </button>
-            </div>
-            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-              Файл кладеться у DCIM/Camera і сканується, щоб його побачили галерея і Threads.
-              Шлях — на тій машині, де запущений бекенд/міст.
-            </p>
-          </div>
+          {/* ВСТАНОВЛЕННЯ APK і ФОТО/ВІДЕО: файли з провідника Windows */}
+          <DeviceUploads onInstalled={loadApps} />
         </div>
       </div>
     </div>

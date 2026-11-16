@@ -5,6 +5,9 @@ const emulator = require("../services/emulatorService");
 const orchestrator = require("../services/androidOrchestrator");
 const androidMetrics = require("../services/androidMetrics");
 const SocialAccount = require("../models/SocialAccount");
+const fs = require("fs");
+const path = require("path");
+const { pipeline } = require("stream/promises");
 
 // Хелпер: обгортає виклик мосту, прокидає його статус-код у відповідь.
 function handle(fn) {
@@ -211,6 +214,65 @@ exports.orchestrateQueue = handle((req) => {
   if (!Array.isArray(items) || !items.length)
     throw Object.assign(new Error("body.items[] обов'язковий"), { status: 400 });
   return orchestrator.runQueue(items, { gapMs: Number(gapMs) || 0 });
+});
+
+// --- завантаження файлів із браузера (провідник Windows) ---
+// Браузер шле сирий файл (application/octet-stream, ім'я в ?name=). Пишемо його
+// потоком на диск — без буферизації в пам'яті, тож і 200-МБ APK не проблема, —
+// передаємо мосту (він на цій самій машині) і видаляємо тимчасову копію.
+const UPLOAD_DIR = path.join(__dirname, "../../storage/android-uploads");
+const APK_EXT = [".apk", ".xapk", ".apks", ".apkm"];
+const MEDIA_EXT = [
+  ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".bmp",
+  ".mp4", ".mov", ".m4v", ".3gp", ".mkv", ".webm", ".avi",
+];
+
+async function receiveUpload(req, allowed) {
+  const name = path.basename(String(req.query.name || "").trim());
+  const ext = path.extname(name).toLowerCase();
+  if (!allowed.includes(ext)) {
+    throw Object.assign(new Error(`непідтримуваний тип файлу «${ext || name}» (дозволено: ${allowed.join(", ")})`), {
+      status: 400,
+    });
+  }
+  // Ім'я на телефоні — латиницею без пробілів: кирилиця й пробіли ламають
+  // shell-команди медіасканера. Окрема тека на кожен файл — без колізій.
+  const base = path.basename(name, ext).replace(/[^\w.-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60);
+  const dir = path.join(UPLOAD_DIR, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const file = path.join(dir, `${/[A-Za-z0-9]/.test(base) ? base : `file_${Date.now()}`}${ext}`);
+  await fs.promises.mkdir(dir, { recursive: true });
+  try {
+    await pipeline(req, fs.createWriteStream(file));
+    const { size } = await fs.promises.stat(file);
+    if (!size) throw Object.assign(new Error("порожній файл"), { status: 400 });
+    return { dir, file, name, size };
+  } catch (err) {
+    await fs.promises.rm(dir, { recursive: true, force: true });
+    throw err;
+  }
+}
+
+// POST /android/upload/apk?name=app.apk&serial=… (тіло — файл) -> встановити.
+exports.uploadApk = handle(async (req) => {
+  const up = await receiveUpload(req, APK_EXT);
+  try {
+    await bridge.installApp(up.file, req.query.serial || undefined);
+    return { installed: true, name: up.name, size: up.size };
+  } finally {
+    await fs.promises.rm(up.dir, { recursive: true, force: true });
+  }
+});
+
+// POST /android/upload/media?name=photo.jpg&serial=… (тіло — файл) -> у галерею
+// телефону (DCIM/Camera + медіаскан), звідки його бачать галерея й Threads.
+exports.uploadMedia = handle(async (req) => {
+  const up = await receiveUpload(req, MEDIA_EXT);
+  try {
+    const r = await bridge.pushMedia(up.file, req.query.serial || undefined);
+    return { ...r, name: up.name, size: up.size };
+  } finally {
+    await fs.promises.rm(up.dir, { recursive: true, force: true });
+  }
 });
 
 // Залити фото/відео з ПК у галерею пристрою (source — локальний шлях на хості).

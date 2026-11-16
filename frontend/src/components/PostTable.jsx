@@ -3,6 +3,64 @@ import PostStatusBadge from './PostStatusBadge';
 import PostAccountsPanel from './PostAccountsPanel';
 import { formatDate } from './StatusBadge';
 
+const ENTRY_STATUS = {
+  published: ['Опубліковано', 'post-status-published_all'],
+  pending: ['Очікує', 'post-status-active'],
+  failed: ['Помилка', 'status-offline'],
+};
+
+// Один акаунт поста: хто публікує, статус і метрики саме цієї публікації.
+function PostAccountRow({ entry }) {
+  const account = entry.account || {};
+  const [label, cls] = ENTRY_STATUS[entry.status] || [entry.status, 'status-unknown'];
+  const name = account.displayName || account.username || 'видалений акаунт';
+  const published = entry.status === 'published';
+  const counters = [
+    ['Перегляди', entry.views],
+    ['Лайки', entry.likes],
+    ['Коментарі', entry.comments],
+    ['Репости', entry.reposts],
+    ['Поширення', entry.shares],
+  ].filter(([, value], idx) => idx < 3 || value > 0);
+
+  return (
+    <li className="post-account">
+      <div className="post-account-who">
+        <strong>{name}</strong>
+        {account.username && account.displayName && (
+          <span className="muted">@{account.username}</span>
+        )}
+        {account.platform && <span className="post-account-platform">{account.platform}</span>}
+      </div>
+      <div className="post-account-status">
+        <span className={`status-badge ${cls}`}>{label}</span>
+        {published && entry.publishedAt && (
+          <span className="muted">{formatDate(entry.publishedAt)}</span>
+        )}
+        {entry.postUrl && (
+          <a href={entry.postUrl} target="_blank" rel="noreferrer">
+            відкрити
+          </a>
+        )}
+      </div>
+      {published && (
+        <div className="post-account-metrics">
+          {counters.map(([title, value]) => (
+            <span key={title}>
+              <strong>{value || 0}</strong> {title.toLowerCase()}
+            </span>
+          ))}
+          <span className="muted post-account-updated">
+            {entry.metricsUpdatedAt
+              ? `оновлено ${formatDate(entry.metricsUpdatedAt)}`
+              : 'метрики ще не збирались'}
+          </span>
+        </div>
+      )}
+    </li>
+  );
+}
+
 export default function PostTable({ posts, onDelete, onEdit, onChange }) {
   const [expandedId, setExpandedId] = useState(null);
 
@@ -57,6 +115,14 @@ export default function PostTable({ posts, onDelete, onEdit, onChange }) {
                   <span>Коментарі</span>
                 </div>
               </div>
+
+              {post.accounts?.length > 0 && (
+                <ul className="post-accounts" aria-label="Публікація по акаунтах">
+                  {post.accounts.map((entry, i) => (
+                    <PostAccountRow key={entry.account?._id || i} entry={entry} />
+                  ))}
+                </ul>
+              )}
 
               <div className="post-card-actions">
                 <button className="btn btn-primary btn-sm" onClick={() => onEdit(post)}>
