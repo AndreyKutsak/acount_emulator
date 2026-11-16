@@ -38,7 +38,7 @@ export default function OrchestrationPanel() {
   }, []);
 
   // Прив'язані до телефону акаунти (придатні для оркестрації).
-  const bound = accounts.filter((a) => a.androidProfileId);
+  const bound = accounts.filter((a) => a.androidSerial || a.androidProfileId);
   const toggle = (id) => setSelected((s) => ({ ...s, [id]: !s[id] }));
   const selectedIds = Object.keys(selected).filter((id) => selected[id]);
 
@@ -107,7 +107,7 @@ export default function OrchestrationPanel() {
         </label>
         <label className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <input type="checkbox" checked={stopAfter} onChange={(e) => setStopAfter(e.target.checked)} />
-          гасити емулятор після
+          гасити емулятор після (фізичні телефони не гасяться)
         </label>
         <button className="btn btn-primary" disabled={busy || !selectedIds.length} onClick={runQueue}>
           Запустити чергу для вибраних ({selectedIds.length})
@@ -116,7 +116,8 @@ export default function OrchestrationPanel() {
 
       {!bound.length ? (
         <p className="empty-state">
-          Немає акаунтів із прив'язаним Android-профілем. Прив'яжіть профіль-телефон у формі акаунта.
+          Немає акаунтів із прив'язаним телефоном. Прив'яжіть фізичний телефон у панелі вище або
+          Android-профіль у формі акаунта.
         </p>
       ) : (
         <div className="table-wrap">
@@ -142,7 +143,9 @@ export default function OrchestrationPanel() {
                   </td>
                   <td>{a.displayName || a.username}</td>
                   <td>{a.platform}</td>
-                  <td className="muted">{a.androidProfileId}</td>
+                  <td className="muted">
+                    {a.androidSerial ? `📱 ${a.androidSerial}` : a.androidProfileId}
+                  </td>
                   <td>
                     <button className="btn btn-sm" disabled={busy} onClick={() => runOne(a._id)}>
                       Запустити

@@ -20,6 +20,7 @@ const proxyManager = require("../services/proxyManager");
 const tlsClient = require("../services/tlsClient");
 const androidBridge = require("../services/androidBridgeService");
 const androidOrchestrator = require("../services/androidOrchestrator");
+const androidMetrics = require("../services/androidMetrics");
 
 // Ті самі прапорці, що й у планувальнику: постинг Threads через Android-емулятор.
 const ANDROID_THREADS_POSTING = process.env.ANDROID_THREADS_POSTING === "true";
@@ -513,7 +514,7 @@ exports.publishPostForAccount = async (req, res) => {
         const postText = text ?? post.text;
         try {
           let result;
-          if (account.androidProfileId) {
+          if (androidOrchestrator.hasPhone(account)) {
             // У акаунта є власний ManyFaces-профіль (телефон) — довіряємо
             // оркестратору: він сам підніме саме цей емулятор, застосує
             // спуф, постить і погасить емулятор після (звільнення ресурсів).
@@ -670,6 +671,23 @@ exports.refreshMetrics = async (req, res) => {
       return res
         .status(404)
         .json({ message: "Account not linked to this post" });
+    // Пости, опубліковані через Android, не мають URL — метрики читаємо зі
+    // «Статистики» Threads на телефоні акаунта (оновлює всі його свіжі пости).
+    if (
+      !entry.postUrl &&
+      account.platform === "threads" &&
+      androidOrchestrator.hasPhone(account) &&
+      process.env.ANDROID_THREADS_POSTING === "true"
+    ) {
+      await androidMetrics.collectForAccount(account, {
+        stopAfter: process.env.ANDROID_STOP_AFTER_POST !== "false",
+      });
+      const fresh = await Post.findById(post._id).populate(
+        "accounts.account",
+        "platform username displayName",
+      );
+      return res.json(fresh.toSummary());
+    }
     if (!entry.postUrl) {
       return res.status(400).json({
         message:

@@ -10,6 +10,11 @@ router.post("/emulator/start", c.emulatorStart);
 router.post("/emulator/stop", c.emulatorStop);
 
 // Стан / інформація
+// Підключені adb-пристрої (фізичні телефони), перевірка і прив'язка до акаунта
+router.get("/phones", c.phones);
+router.get("/phones/check", c.phoneCheck);
+router.post("/phones/bind", c.phoneBind);
+
 router.get("/health", c.health);
 router.get("/devices", c.devices);
 router.get("/info", c.info);
@@ -30,6 +35,8 @@ router.post("/swipe", c.swipe);
 
 // Поведінки (flows)
 router.post("/threads/post", c.threadsPost);
+// Метрики свіжих дописів акаунта зі «Статистики» Threads -> у пости в БД
+router.post("/threads/metrics", c.threadsMetrics);
 
 // Оркестрація життєвого циклу: піднятти профіль-телефон → дія → закрити → згасити
 router.post("/orchestrate/account", c.orchestrateAccount);

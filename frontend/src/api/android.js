@@ -11,6 +11,18 @@ export const emulatorStart = (profileId) =>
 export const emulatorStop = (profileId) =>
   api.post("/android/emulator/stop", { profileId }).then((r) => r.data);
 
+// --- підключені adb-пристрої (фізичні телефони) ---
+export const androidPhones = () =>
+  api.get("/android/phones", { timeout: 40000 }).then((r) => r.data);
+export const androidPhoneCheck = (serial) =>
+  api.get("/android/phones/check", { params: { serial }, timeout: 40000 }).then((r) => r.data);
+// serial="" — відв'язати акаунт від телефону.
+export const androidPhoneBind = (accountId, serial) =>
+  api.post("/android/phones/bind", { accountId, serial }).then((r) => r.data);
+// Зібрати перегляди/лайки/відповіді зі «Статистики» Threads на телефоні акаунта.
+export const androidThreadsMetrics = (accountId) =>
+  api.post("/android/threads/metrics", { accountId }, { timeout: 600000 }).then((r) => r.data);
+
 export const androidHealth = () => api.get("/android/health").then((r) => r.data);
 export const androidInfo = () => api.get("/android/info").then((r) => r.data);
 export const androidDevices = () => api.get("/android/devices").then((r) => r.data);

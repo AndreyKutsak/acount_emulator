@@ -18,6 +18,7 @@ import { errorMessage } from "../api/client";
 import EmulatorControl from "../components/EmulatorControl";
 import DeviceSpoofPanel from "../components/DeviceSpoofPanel";
 import OrchestrationPanel from "../components/OrchestrationPanel";
+import PhonesPanel from "../components/PhonesPanel";
 
 export default function AndroidPage() {
   const [info, setInfo] = useState(null);
@@ -143,6 +144,10 @@ export default function AndroidPage() {
 
       {error && <p className="error">{error}</p>}
       {msg && <p className="muted">{msg}</p>}
+
+      <div style={{ marginBottom: 16 }}>
+        <PhonesPanel />
+      </div>
 
       <div style={{ marginBottom: 16 }}>
         <EmulatorControl />

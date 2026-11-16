@@ -13,6 +13,9 @@ const postAccountSchema = new mongoose.Schema(
     views: { type: Number, default: 0 },
     likes: { type: Number, default: 0 },
     comments: { type: Number, default: 0 },
+    reposts: { type: Number, default: 0 },
+    shares: { type: Number, default: 0 },
+    metricsUpdatedAt: { type: Date, default: null },
   },
   { _id: false }
 );

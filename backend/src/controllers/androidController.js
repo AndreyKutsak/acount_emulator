@@ -3,6 +3,8 @@
 const bridge = require("../services/androidBridgeService");
 const emulator = require("../services/emulatorService");
 const orchestrator = require("../services/androidOrchestrator");
+const androidMetrics = require("../services/androidMetrics");
+const SocialAccount = require("../models/SocialAccount");
 
 // Хелпер: обгортає виклик мосту, прокидає його статус-код у відповідь.
 function handle(fn) {
@@ -28,6 +30,72 @@ exports.emulatorStop = handle((req) => {
   const { profileId } = req.body;
   if (!profileId) throw Object.assign(new Error("body.profileId обов'язковий"), { status: 400 });
   return emulator.stopProfile(profileId);
+});
+
+// --- підключені adb-пристрої (фізичні телефони й емулятори) ---
+// Усі пристрої з деталями (модель, екран, блокування, чи встановлено Threads)
+// + які акаунти до кожного прив'язані.
+exports.phones = handle(async () => {
+  const [d, accounts] = await Promise.all([
+    bridge.devicesDetailed(),
+    SocialAccount.find(
+      { androidSerial: { $nin: [null, ""] } },
+      "username displayName platform androidSerial",
+    ),
+  ]);
+  const bySerial = {};
+  for (const a of accounts) {
+    (bySerial[a.androidSerial] ||= []).push({
+      _id: a._id,
+      username: a.username,
+      displayName: a.displayName,
+      platform: a.platform,
+    });
+  }
+  const devices = (d.devices || []).map((x) => ({ ...x, accounts: bySerial[x.serial] || [] }));
+  // Прив'язані телефони, яких зараз немає в adb, — щоб було видно, що вони відпали.
+  const present = new Set(devices.map((x) => x.serial));
+  for (const [serial, accs] of Object.entries(bySerial)) {
+    if (!present.has(serial)) {
+      devices.push({
+        serial,
+        state: "absent",
+        ready: false,
+        hint: "не підключений — під'єднайте кабель (або adb connect ip:port)",
+        accounts: accs,
+      });
+    }
+  }
+  return { devices, required: d.required || [] };
+});
+
+exports.phoneCheck = handle((req) => {
+  const { serial, package: pkg } = req.query;
+  if (!serial) throw Object.assign(new Error("query.serial обов'язковий"), { status: 400 });
+  return bridge.deviceCheck(serial, pkg);
+});
+
+// Прив'язати акаунт до фізичного телефону (serial="" — відв'язати).
+exports.phoneBind = handle(async (req) => {
+  const { accountId, serial = "" } = req.body;
+  if (!accountId) throw Object.assign(new Error("body.accountId обов'язковий"), { status: 400 });
+  const account = await SocialAccount.findById(accountId);
+  if (!account) throw Object.assign(new Error("акаунт не знайдено"), { status: 404 });
+  if (serial) {
+    const chk = await bridge.deviceCheck(serial);
+    if (chk.state === "absent") {
+      throw Object.assign(new Error(`пристрою ${serial} немає в adb`), { status: 404 });
+    }
+    if (chk.emulator) {
+      throw Object.assign(
+        new Error("це емулятор — прив'язуйте його через Android-профіль ManyFaces, а не як фізичний телефон"),
+        { status: 400 },
+      );
+    }
+  }
+  account.androidSerial = String(serial).trim();
+  await account.save();
+  return { _id: account._id, username: account.username, androidSerial: account.androidSerial };
 });
 
 exports.health = handle(() => bridge.health());
@@ -125,6 +193,16 @@ exports.orchestrateAccount = handle((req) => {
     { type: "threadsPost", text, publish: publish === true },
     { stopAfter: stopAfter !== false },
   );
+});
+
+// Підняти телефон акаунта, зчитати «Статистику» Threads і записати перегляди/
+// лайки/відповіді у відповідні пости. stopAfter=false лишає емулятор увімкненим.
+exports.threadsMetrics = handle(async (req) => {
+  const { accountId, stopAfter = true } = req.body;
+  if (!accountId) throw Object.assign(new Error("body.accountId обов'язковий"), { status: 400 });
+  const account = await SocialAccount.findById(accountId);
+  if (!account) throw Object.assign(new Error("акаунт не знайдено"), { status: 404 });
+  return androidMetrics.collectForAccount(account, { stopAfter: stopAfter !== false });
 });
 
 // Послідовна черга акаунтів: по одному емулятору за раз.
