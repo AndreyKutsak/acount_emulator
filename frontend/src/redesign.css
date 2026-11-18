@@ -878,3 +878,119 @@ tr.state-edge[data-state="danger"] > td:first-child {
 a.btn {
   text-decoration: none;
 }
+
+/* --- Заборонені слова --- */
+.words-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.words-add input {
+  flex: 2 1 260px;
+}
+
+.words-add select {
+  flex: 1 1 220px;
+  width: auto;
+}
+
+.words-groups {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.words-group {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.words-group-off {
+  opacity: 0.6;
+}
+
+.words-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.words-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.words-group-why {
+  margin: 6px 0 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.words-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.word-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13.5px;
+}
+
+.word-chip-off {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.word-chip .word-chip-remove {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.word-chip .word-chip-remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.words-check {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.words-add select,
+.words-add input {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .words-add > * {
+    flex: 1 1 100%;
+  }
+}

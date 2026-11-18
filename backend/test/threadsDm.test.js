@@ -116,3 +116,30 @@ test("коментарі перевіряємо там само, де й осо�
   assert.equal(shouldRunComments({ type: "threadsDm" }, undefined, { dmAfter: true }), false);
   assert.equal(shouldRunDm({ type: "threadsComments" }, undefined, { dmAfter: true }), false);
 });
+
+const matcher = require("../src/services/autoReplyMatcher");
+
+test("ротація: на однакові «+» - різні відповіді, повтор лише після всіх варіантів", () => {
+  const plus = rule({
+    name: "Плюс",
+    matchType: "exact",
+    keywords: ["+"],
+    replies: ["Варіант А", "Варіант Б", "Варіант В"],
+  });
+  const chats = ["a", "b", "c", "d", "e", "f"].map((u) => ({ username: u, text: "+", folder: "comments", key: u }));
+  const plan = planReplies(chats, [plus], { budget: 10 });
+  const texts = plan.map((p) => p.texts[0]);
+  // Кожні три поспіль - усі різні.
+  assert.equal(new Set(texts.slice(0, 3)).size, 3);
+  assert.equal(new Set(texts.slice(3, 6)).size, 3);
+  for (let i = 1; i < texts.length; i += 1) assert.notEqual(texts[i], texts[i - 1]);
+});
+
+test("ротація враховує варіанти з попередніх сеансів", () => {
+  const r = { replies: ["А", "Б", "В"] };
+  for (let i = 0; i < 20; i += 1) {
+    const v = matcher.renderReplyVariant(r, { recent: [0, 1] });
+    assert.equal(v.index, 2);
+  }
+  assert.equal(matcher.renderReplyVariant({ replies: [] }), null);
+});

@@ -6,6 +6,7 @@ import PostTable from '../components/PostTable';
 import Modal from '../components/Modal';
 import DailyPostPlan from '../components/DailyPostPlan';
 import ListToolbar, { useListView } from '../components/ListToolbar';
+import PostWordsPanel from '../components/PostWordsPanel';
 
 const entries = (p) => p.accounts || [];
 const has = (status) => (p) => entries(p).some((a) => a.status === status);
@@ -70,6 +71,7 @@ export default function PostsPage() {
   const [creating, setCreating] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [planKey, setPlanKey] = useState(0);
+  const [wordsOpen, setWordsOpen] = useState(false);
 
   const view = useListView('posts', posts, {
     search: (p) => p.text,
@@ -154,10 +156,17 @@ export default function PostsPage() {
           <h2>Пости</h2>
           <p className="page-subtitle">Планування, публікація і статистика вакансій</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setCreating((value) => !value)}>
-          {creating ? 'Закрити форму' : 'Новий пост'}
-        </button>
+        <div className="page-header-actions">
+          <button className="btn" onClick={() => setWordsOpen((v) => !v)} aria-expanded={wordsOpen}>
+            Заборонені слова
+          </button>
+          <button className="btn btn-primary" onClick={() => setCreating((value) => !value)}>
+            {creating ? 'Закрити форму' : 'Новий пост'}
+          </button>
+        </div>
       </div>
+
+      {wordsOpen && <PostWordsPanel onClose={() => setWordsOpen(false)} />}
 
       {error && <p className="error">{error}</p>}
 

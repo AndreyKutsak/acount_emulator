@@ -18,6 +18,7 @@ const ThreadsDmRule = require("../models/ThreadsDmRule");
 const ThreadsDmLog = require("../models/ThreadsDmLog");
 const bridge = require("./androidBridgeService");
 const matcher = require("./autoReplyMatcher");
+const { isJobPost } = require("./threadsPostRules");
 
 const MAX_ATTEMPTS = 3;
 // Не текст, а службовий рядок списку: реакція на наше повідомлення.
@@ -42,10 +43,17 @@ function shouldRunDm(behavior, result, opts = {}) {
 //   rules:    увімкнені правила акаунта;
 //   handled:  Set messageKey, які вже оброблено (повторно не чіпаємо);
 //   usedRules: Map username -> Set ruleId, уже використаних правил oncePerUser;
-//   budget:   скільки відповідей ще можна надіслати.
-// -> [{ chat, key, status, match, category, candidates, texts, reason }]
+//   budget:   скільки відповідей ще можна надіслати;
+//   recentVariants: Map ruleId -> [індекси варіантів, найсвіжіший перший] - для ротації,
+//             щоб однакові повідомлення («+») отримували різні відповіді. Доповнюється
+//             по ходу, тож у межах одного сеансу варіанти теж не повторюються.
+// -> [{ chat, key, status, match, category, candidates, texts, variant, reason }]
 //   status: reply | ignored | no_match | skipped
-function planReplies(chats, rules, { handled = new Set(), usedRules = new Map(), budget = 0 } = {}) {
+function planReplies(
+  chats,
+  rules,
+  { handled = new Set(), usedRules = new Map(), budget = 0, recentVariants = new Map() } = {},
+) {
   const out = [];
   const seen = new Set();
   let left = budget;
@@ -69,13 +77,15 @@ function planReplies(chats, rules, { handled = new Set(), usedRules = new Map(),
     } else if (left <= 0) {
       out.push({ ...decided, status: "skipped", reason: "ліміт відповідей" });
     } else {
-      const texts = matcher.renderReply(match.rule);
-      if (!texts.length) {
+      const ruleId = String(match.rule._id);
+      const picked = matcher.renderReplyVariant(match.rule, { recent: recentVariants.get(ruleId) || [] });
+      if (!picked || !picked.parts.length) {
         out.push({ ...decided, status: "skipped", reason: "у правила порожня відповідь" });
         continue;
       }
+      recentVariants.set(ruleId, [picked.index, ...(recentVariants.get(ruleId) || [])].slice(0, 20));
       left -= 1;
-      out.push({ ...decided, status: "reply", texts });
+      out.push({ ...decided, status: "reply", texts: picked.parts, variant: picked.index });
     }
   }
   return out;
@@ -83,6 +93,28 @@ function planReplies(chats, rules, { handled = new Set(), usedRules = new Map(),
 
 // Правила каналу; старі правила без поля channel - особисті.
 const channelFilter = (channel) => (channel === "comments" ? { channel: "comments" } : { channel: { $in: ["dm", null] } });
+
+// Останні використані варіанти відповіді кожного правила (для ротації між сеансами).
+async function recentVariantsFor(accountId, channel) {
+  const logs = await ThreadsDmLog.find({
+    account: accountId,
+    ...channelFilter(channel),
+    status: "replied",
+    rule: { $ne: null },
+    replyVariant: { $ne: null },
+  })
+    .sort({ repliedAt: -1 })
+    .limit(200)
+    .select("rule replyVariant")
+    .lean();
+  const map = new Map();
+  for (const l of logs) {
+    const id = String(l.rule);
+    if (!map.has(id)) map.set(id, []);
+    if (map.get(id).length < 20) map.get(id).push(l.replyVariant);
+  }
+  return map;
+}
 
 async function rulesFor(accountId, channel = "dm") {
   return ThreadsDmRule.find({
@@ -109,6 +141,7 @@ function logFields(d, now) {
     category: d.category || d.match?.category || "",
     categories: [...new Set(d.candidates.map((c) => c.category))],
     matchedKeywords: d.match?.matchedKeywords || [],
+    replyVariant: d.variant ?? null,
     reason: d.reason || "",
   };
 }
@@ -165,7 +198,12 @@ async function handleInbox(account, serial, log = []) {
       Math.min(settings.maxPerSession ?? 5, (settings.maxPerDay ?? 30) - repliedToday),
     );
 
-    const plan = planReplies(chats, await rulesFor(account._id, "dm"), { handled, usedRules, budget });
+    const plan = planReplies(chats, await rulesFor(account._id, "dm"), {
+      handled,
+      usedRules,
+      budget,
+      recentVariants: await recentVariantsFor(account._id, "dm"),
+    });
     const now = new Date();
     const upsert = async (d, patch) => {
       const doc = byKey.get(d.key) || new ThreadsDmLog({ account: account._id });
@@ -233,12 +271,16 @@ const commentKey = (c) =>
 
 // Які коментарі взагалі розглядати (без бази): не наші акаунти, свіжі, без
 // наявних відповідей (якщо skipAnswered), з текстом.
-function eligibleComments(comments, { ownUsernames = new Set(), maxAgeHours = 24, skipAnswered = true } = {}) {
+function eligibleComments(
+  comments,
+  { ownUsernames = new Set(), maxAgeHours = 24, skipAnswered = true, onlyJobPosts = false } = {},
+) {
   return (comments || []).filter((c) => {
     if (!c.author || !String(c.text || "").trim()) return false;
     if (ownUsernames.has(String(c.author).toLowerCase())) return false;
     if (c.age_minutes == null || c.age_minutes > maxAgeHours * 60) return false;
     if (skipAnswered && c.reply_count > 0) return false;
+    if (onlyJobPosts && !isJobPost(c.context)) return false;
     return true;
   });
 }
@@ -263,6 +305,7 @@ async function handleComments(account, serial, log = []) {
       ownUsernames,
       maxAgeHours: settings.maxAgeHours ?? 24,
       skipAnswered: settings.skipAnswered !== false,
+      onlyJobPosts: settings.onlyJobPosts !== false,
     });
     summary.scanned = comments.length;
     const chats = comments.map((c) => ({
@@ -299,7 +342,12 @@ async function handleComments(account, serial, log = []) {
     });
     const budget = Math.max(0, Math.min(settings.maxPerSession ?? 5, (settings.maxPerDay ?? 30) - repliedToday));
 
-    const plan = planReplies(chats, await rulesFor(account._id, "comments"), { handled, usedRules, budget });
+    const plan = planReplies(chats, await rulesFor(account._id, "comments"), {
+      handled,
+      usedRules,
+      budget,
+      recentVariants: await recentVariantsFor(account._id, "comments"),
+    });
     const now = new Date();
     const upsert = async (d, patch) => {
       const doc = byKey.get(d.key) || new ThreadsDmLog({ account: account._id });

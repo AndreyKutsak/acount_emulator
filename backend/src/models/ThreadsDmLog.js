@@ -30,6 +30,8 @@ const threadsDmLogSchema = new mongoose.Schema(
     categories: { type: [String], default: [] },
     matchedKeywords: { type: [String], default: [] },
     replyText: { type: String, default: "" },
+    // Індекс варіанта відповіді правила - для ротації (без повторів поспіль).
+    replyVariant: { type: Number, default: null },
     repliedAt: { type: Date, default: null },
     // replied:  відповідь надіслано;
     // ignored:  категорія без відповіді (спам);

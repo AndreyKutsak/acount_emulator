@@ -6,6 +6,16 @@ const matcher = require("../services/autoReplyMatcher");
 const orchestrator = require("../services/androidOrchestrator");
 const { channelFilter } = require("../services/threadsDm");
 const { applyRule, badRequest } = require("../services/autoReplyRuleInput");
+const postRules = require("../services/threadsPostRules");
+
+// Відповідь під постом публічна: ті самі заборонені слова, що й у постах.
+function checkPublicReplies(rule) {
+  if (rule.channel !== "comments" || rule.action === "ignore") return;
+  for (const reply of rule.replies || []) {
+    const reason = postRules.forbiddenWordsReason(reply);
+    if (reason) throw badRequest(`Відповідь під постом публічна, тож для неї діють правила постів. ${reason}. Текст: «${reply.slice(0, 60)}»`);
+  }
+}
 
 // Автовідповіді Threads на особисті (channel=dm, за замовчуванням) і на коментарі
 // під нашими постами (channel=comments). Канал - у ?channel= або в тілі запиту.
@@ -44,6 +54,7 @@ exports.listRules = handle(async (req, res) => {
 exports.createRule = handle(async (req, res) => {
   const rule = new ThreadsDmRule({ channel: channelOf(req) });
   applyRule(rule, req.body);
+  checkPublicReplies(rule);
   await rule.save();
   res.status(201).json(rule);
 });
@@ -52,6 +63,7 @@ exports.updateRule = handle(async (req, res) => {
   const rule = await ThreadsDmRule.findById(req.params.ruleId);
   if (!rule) return res.status(404).json({ message: "Rule not found" });
   applyRule(rule, req.body);
+  checkPublicReplies(rule);
   await rule.save();
   res.json(rule);
 });
@@ -99,7 +111,7 @@ const LIMITS = {
   dm: { maxPerSession: [0, 50], maxPerDay: [0, 500] },
   comments: { maxPerSession: [0, 50], maxPerDay: [0, 500], maxAgeHours: [1, 168] },
 };
-const FLAGS = { dm: ["enabled", "includeRequests"], comments: ["enabled", "skipAnswered"] };
+const FLAGS = { dm: ["enabled", "includeRequests"], comments: ["enabled", "skipAnswered", "onlyJobPosts"] };
 
 async function threadsAccount(id) {
   const account = await SocialAccount.findById(id);
@@ -121,7 +133,7 @@ function describe(account, channel = "dm") {
       maxPerSession: s.maxPerSession ?? 5,
       maxPerDay: s.maxPerDay ?? 30,
       ...(channel === "comments"
-        ? { maxAgeHours: s.maxAgeHours ?? 24, skipAnswered: s.skipAnswered !== false }
+        ? { maxAgeHours: s.maxAgeHours ?? 24, skipAnswered: s.skipAnswered !== false, onlyJobPosts: s.onlyJobPosts !== false }
         : { includeRequests: s.includeRequests !== false }),
     },
     lastRunAt: s.lastRunAt || null,

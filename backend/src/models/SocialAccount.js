@@ -63,6 +63,8 @@ const socialAccountSchema = new mongoose.Schema(
       maxAgeHours: { type: Number, default: 24 },
       // Не відповідати, якщо під коментарем уже є відповідь (ваша чи чужа).
       skipAnswered: { type: Boolean, default: true },
+      // Лише коментарі під вакансіями (не під постами «про життя» й не на наші відповіді).
+      onlyJobPosts: { type: Boolean, default: true },
       lastRunAt: { type: Date, default: null },
       lastError: { type: String, default: "" },
     },

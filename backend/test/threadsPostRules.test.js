@@ -5,10 +5,10 @@ const { validateText, isJobPost, similarity } = require("../src/services/threads
 const codes = (r) => [...r.errors, ...r.warnings].map((i) => i.code);
 const errorCodes = (r) => r.errors.map((i) => i.code);
 
-const GOOD_JOB = `Junior QA у п�-одуктову команду --- 30---40 тис. г�-н, віддалено.
-Бе�-емо без коме�-ційного досвіду, якщо �- пет-п�-о�-кт з тест-кейсами.
-Пе�-ший місяць --- онбо�-динг з менто�-ом.
-Пишіть у ПП 2---3 �-ечення п�-о себе.
+const GOOD_JOB = `Junior QA у продуктову команду - 30-40 тис. на місяць, віддалено.
+Беремо без комерційного досвіду, якщо є пет-проєкт з тест-кейсами.
+Перший місяць - онбординг з ментором.
+Пишіть у ПП 2-3 речення про себе.
 #Вакансії`;
 
 test("гарна вакансія проходить без помилок і попереджень", () => {
@@ -61,7 +61,7 @@ test("вакансія без зарплати, формату й способу
 });
 
 test("загальний перший рядок і капс", () => {
-  assert.ok(codes(validateText("Увага!\nМенеджер, 30 тис. грн, офіс у Києві, пишіть у ПП. #Вакансії")).includes("generic_opener"));
+  assert.ok(codes(validateText("Увага!\nМенеджер, 30 тис., офіс у Києві, пишіть у ПП. #Вакансії")).includes("generic_opener"));
   assert.ok(codes(validateText("ТЕРМІНОВО ПОТРІБЕН ВОДІЙ НА ДОСТАВКУ, ДОБРА ОПЛАТА #Робота")).includes("caps"));
 });
 
@@ -75,6 +75,47 @@ test("схожість тексту", () => {
 });
 
 test("довгі тире заборонені, дефіс дозволений", () => {
-  assert.ok(errorCodes(validateText("Комірник у Rozetka — 27–32 тис. грн, Вінниця. Пишіть у ПП. #Робота")).includes("long_dash"));
-  assert.ok(!errorCodes(validateText("Комірник у Rozetka - 27-32 тис. грн, Вінниця. Пишіть у ПП. #Робота")).includes("long_dash"));
+  assert.ok(errorCodes(validateText("Комірник у Rozetka — 27–32 тис., Вінниця. Пишіть у ПП. #Робота")).includes("long_dash"));
+  assert.ok(!errorCodes(validateText("Комірник у Rozetka - 27-32 тис., Вінниця. Пишіть у ПП. #Робота")).includes("long_dash"));
+});
+
+test("валюта в будь-якому вигляді - помилка, сума без валюти - ні", () => {
+  for (const t of ["27 500 грн на місяць", "від $1000", "1 500 USD", "800 євро", "35 тис. гривень", "100 zł за день", "200₴"]) {
+    assert.ok(errorCodes(validateText(`Кухар у ресторан, Вінниця, ${t}. #Робота`)).includes("currency"), t);
+  }
+  for (const t of ["27 500 на місяць", "від 30 тис.", "200 за зміну", "З/п - за результатами співбесіди"]) {
+    assert.ok(!errorCodes(validateText(`Кухар у ресторан, Вінниця, ${t}. #Робота`)).includes("currency"), t);
+  }
+});
+
+test("Telegram та інші месенджери - помилка, схожі слова - ні", () => {
+  for (const t of ["Пишіть у Telegram", "деталі в телеграмі", "наш тг-канал", "t.me/jobs", "Viber або WhatsApp", "пишіть у вайбер"]) {
+    assert.ok(errorCodes(validateText(`Кухар у ресторан, Вінниця. ${t}. #Робота`)).includes("messenger"), t);
+  }
+  for (const t of ["Деталі - за посиланням у шапці профілю", "Telegraph", "тгк", "таргетолог"]) {
+    assert.ok(!errorCodes(validateText(`Кухар у ресторан, Вінниця. ${t}. #Робота`)).includes("messenger"), t);
+  }
+});
+
+test("ознаки шахрайської вакансії з правил Meta - помилки", () => {
+  const cases = {
+    scam_promise: ["Гарантований дохід щомісяця", "легкі гроші вдома", "Пасивний дохід з телефону", "Старт без вкладень"],
+    advance_fee: ["Передоплата за матеріали", "оплата за навчання 500", "вступний внесок"],
+    gambling_crypto: ["Оператор казино", "Заробіток на крипті"],
+  };
+  for (const [code, list] of Object.entries(cases)) {
+    for (const t of list) assert.ok(errorCodes(validateText(`Оператор, Вінниця. ${t}. #Робота`)).includes(code), `${code}: ${t}`);
+  }
+  // Звичайні слова не ловляться.
+  for (const t of ["Гарантуємо офіційне оформлення за КЗпП", "Оплата щомісяця двічі", "Навчання за рахунок компанії"]) {
+    const r = validateText(`Оператор, Вінниця. ${t}. #Робота`);
+    for (const code of ["scam_promise", "advance_fee", "gambling_crypto"]) assert.ok(!errorCodes(r).includes(code), `${code}: ${t}`);
+  }
+});
+
+test("ризикові обіцянки - лише попередження", () => {
+  const r = validateText("Менеджер, Вінниця. Дохід без стелі, виплати щодня. Деталі - за посиланням у шапці профілю. #Робота");
+  assert.equal(r.ok, true);
+  assert.ok(codes(r).includes("unlimited_income"));
+  assert.ok(codes(r).includes("daily_pay"));
 });
