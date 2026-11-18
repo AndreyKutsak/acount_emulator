@@ -59,7 +59,10 @@ exports.getStats = async (req, res, next) => {
       vpnByStatus[s.status] = (vpnByStatus[s.status] || 0) + 1;
     }
 
-    const recentPosts = postSummaries.slice(0, 5).map((p) => ({
+    // Останні - за часом створення, найновіші першими (запит віддає пости в порядку вставки).
+    const recentPosts = [...postSummaries]
+      .sort((x, y) => new Date(y.createdAt || 0) - new Date(x.createdAt || 0))
+      .slice(0, 5).map((p) => ({
       _id: p._id,
       text: p.text,
       overallStatus: p.overallStatus,

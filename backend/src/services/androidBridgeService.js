@@ -86,9 +86,10 @@ module.exports = {
   // publish=false => заповнити композер, але НЕ публікувати (безпечний тест)
   // Довгий виклик: після холодного старту потік спершу чекає звільнення черги
   // broadcast-ів Android (до 8 хв), а вже потім вводить текст.
-  threadsPost: (text, publish = true, serial) =>
+  // media - шляхи фото на пристрої, уже залитих у галерею (pushMedia), у порядку поста.
+  threadsPost: (text, publish = true, serial, media = []) =>
     call("POST", "/behavior/threads-post", {
-      body: { text, publish, serial },
+      body: { text, publish, serial, media },
       timeoutMs: 900000,
     }),
 
@@ -98,6 +99,39 @@ module.exports = {
     call("POST", "/behavior/threads-metrics", {
       body: { serial },
       timeoutMs: 300000,
+    }),
+
+  // Непрочитані особисті зі списків «Вхідні»/«Запити». Чат відкривається лише
+  // коли замість тексту «N нові повідомлення»; known - підписи вже оброблених рядків.
+  // -> { chats: [{ folder, username, title, preview, signature, messages, text }] }
+  threadsDmScan: (serial, folders = ["inbox", "requests"], known = []) =>
+    call("POST", "/behavior/threads-dm-scan", {
+      body: { serial, folders, known },
+      timeoutMs: 300000,
+    }),
+
+  // Відкрити кожен чат і надіслати тексти. items: [{ username, folder, texts }]
+  // -> { results: [{ username, ok, error? }] } у тому ж порядку.
+  // Коментарі під нашими постами з «Дії → Розмови».
+  // -> { comments: [{ author, text, context, age_minutes, reply_count }] }
+  threadsCommentsScan: (serial, maxRows = 30) =>
+    call("POST", "/behavior/threads-comments-scan", {
+      body: { serial, max_rows: maxRows },
+      timeoutMs: 180000,
+    }),
+
+  // Відповісти на коментарі: items [{ author, text, context, reply }]
+  // -> { results: [{ author, ok, error? }] } у тому ж порядку.
+  threadsCommentsReply: (serial, items) =>
+    call("POST", "/behavior/threads-comments-reply", {
+      body: { serial, items },
+      timeoutMs: 900000,
+    }),
+
+  threadsDmSend: (serial, items) =>
+    call("POST", "/behavior/threads-dm-send", {
+      body: { serial, items },
+      timeoutMs: 600000,
     }),
 
   // --- профіль маскування пристрою (Шар A/Б) ---

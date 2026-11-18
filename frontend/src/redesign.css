@@ -1,0 +1,710 @@
+/* =====================================================================
+   Редизайн «Диспетчерська»: стан - головне, усе інше спокійне.
+   Шар поверх index.css (підключається після нього в main.jsx):
+   шрифт Golos Text, бензиновий акцент, рамки замість тіней, радіуси за
+   ієрархією (панель 14, елемент 10, чіп 999), кольорова смуга стану на
+   картках і рядках. Токени кольорів - у :root в index.css.
+   ===================================================================== */
+
+body {
+  font-size: 14.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* --- Оболонка --- */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 22px 12px 16px;
+  gap: 20px;
+}
+
+.brand-mark {
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+.brand-name {
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.nav {
+  gap: 18px;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-section-label {
+  padding: 0 12px 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.nav .nav-item {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+.nav .nav-item:hover {
+  background: var(--surface-2);
+}
+
+.nav .nav-item.active {
+  position: relative;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.nav .nav-item.active::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: -12px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+
+.main {
+  padding: 34px 40px 72px;
+  max-width: 1200px;
+}
+
+/* --- Заголовок сторінки --- */
+.page-header {
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
+
+.page-subtitle {
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 28px 0 12px;
+}
+
+.section-heading h3,
+.posts-list-section h3 {
+  font-size: 18px;
+  font-weight: 650;
+}
+
+/* --- Картки --- */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  margin-bottom: 12px;
+  color: var(--text);
+  font-size: 15.5px;
+  font-weight: 650;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.card-title-row .card-title {
+  margin: 0;
+}
+
+.card-note {
+  margin: 14px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.empty-state {
+  padding: 28px 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* --- Кнопки --- */
+.btn {
+  min-height: 38px;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  border-color: var(--border-strong);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.btn-sm {
+  min-height: 32px;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn-danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  background: none;
+  color: var(--accent-hover);
+}
+
+/* --- Поля --- */
+input,
+select,
+textarea {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-color: var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 14.5px;
+}
+
+textarea {
+  line-height: 1.5;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  accent-color: var(--accent);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.checkbox-item {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-color: var(--border);
+  background: var(--surface);
+  font-size: 14px;
+}
+
+/* --- Статуси --- */
+.status-badge {
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.post-status-active,
+.post-status-published_partial,
+.auth-blocked {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.status-unknown,
+.post-status-draft,
+.auth-unknown {
+  background: var(--idle-soft);
+  color: var(--text-muted);
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--idle);
+  vertical-align: 1px;
+}
+
+.dot-success {
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-soft);
+}
+
+.dot-warning {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px var(--warning-soft);
+}
+
+.dot-danger {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
+/* Смуга стану: головний візуальний сигнал списку. */
+.state-edge {
+  position: relative;
+}
+
+.state-edge::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: var(--idle);
+}
+
+.state-edge[data-state="success"]::before {
+  background: var(--success);
+}
+
+.state-edge[data-state="warning"]::before {
+  background: var(--warning);
+}
+
+.state-edge[data-state="danger"]::before {
+  background: var(--danger);
+}
+
+/* У таблиці смугу малює перша комірка (псевдоелемент рядка в таблиці не працює). */
+tr.state-edge::before {
+  display: none;
+}
+
+tr.state-edge > td:first-child {
+  box-shadow: inset 4px 0 0 var(--idle);
+}
+
+tr.state-edge[data-state="success"] > td:first-child {
+  box-shadow: inset 4px 0 0 var(--success);
+}
+
+tr.state-edge[data-state="warning"] > td:first-child {
+  box-shadow: inset 4px 0 0 var(--warning);
+}
+
+tr.state-edge[data-state="danger"] > td:first-child {
+  box-shadow: inset 4px 0 0 var(--danger);
+}
+
+.cell-title {
+  font-weight: 600;
+}
+
+.cell-sub {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* --- Рядок керування списком --- */
+.list-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.list-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.list-search {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.list-search svg,
+.list-sort svg {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.list-search input {
+  padding-left: 38px;
+  background: var(--surface);
+}
+
+.list-select {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.list-select select {
+  width: auto;
+  max-width: 100%;
+  padding-right: 30px;
+  cursor: pointer;
+}
+
+.list-sort select {
+  padding-left: 38px;
+}
+
+.chip-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chip-row::-webkit-scrollbar {
+  display: none;
+}
+
+.chip-row .chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 5px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip-row .chip:hover {
+  background: var(--surface-2);
+}
+
+.chip-row .chip-active,
+.chip-row .chip-active:hover {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--surface);
+}
+
+.chip-count {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.chip-active .chip-count {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.list-toolbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* --- Підсумок над списком --- */
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 18px;
+  border-left: 1px solid var(--border);
+}
+
+.summary-item:first-child {
+  border-left: 0;
+}
+
+.summary-value {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.summary-label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.summary-success .summary-value {
+  color: var(--success);
+}
+
+.summary-warning .summary-value {
+  color: var(--warning);
+}
+
+.summary-danger .summary-value {
+  color: var(--danger);
+}
+
+/* --- Картка поста --- */
+.post-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+.post-card-main {
+  padding-left: 24px;
+}
+
+.post-card-text {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* --- Телефони --- */
+.device-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 12px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.device-main {
+  min-width: 0;
+}
+
+/* --- Таблиці --- */
+.table-wrap {
+  border-color: var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.vpn-table th,
+.sessions-table th {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.vpn-table td,
+.sessions-table td {
+  vertical-align: top;
+}
+
+.stat-label {
+  letter-spacing: 0;
+  font-size: 13px;
+}
+
+/* --- Телефон --- */
+@media (max-width: 768px) {
+  .main {
+    padding: 18px 14px calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .page-header h2 {
+    font-size: 22px;
+  }
+
+  .page-header .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-item:nth-child(3) {
+    border-left: 0;
+  }
+
+  .summary-item:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+
+  /* Пошук на всю ширину, списки - по два в ряд. */
+  .list-search {
+    flex: 1 1 100%;
+  }
+
+  .list-select {
+    flex: 1 1 calc(50% - 4px);
+  }
+
+  .list-select select {
+    width: 100%;
+  }
+
+  .nav .nav-item.active::before {
+    display: none;
+  }
+
+  .card {
+    padding: 16px;
+  }
+
+  .device-row {
+    flex-wrap: wrap;
+  }
+
+  .device-row .btn {
+    flex: 1 1 100%;
+  }
+}
+
+/* --- Таблиця акаунтів --- */
+.ua-edit {
+  font-size: 13px;
+}
+
+/* Комірка дій - звичайна комірка таблиці (flex на td ламає рамки рядка). */
+@media (min-width: 641px) {
+  .vpn-table td.vpn-actions {
+    display: table-cell;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .vpn-table td.vpn-actions .btn + .btn {
+    margin-left: 6px;
+  }
+}
+
+/* У режимі карток (вузький екран) рядок таблиці - окрема картка: смуга по всій лівій стороні. */
+@media (max-width: 640px) {
+  tr.state-edge > td:first-child,
+  tr.state-edge[data-state] > td:first-child {
+    box-shadow: none;
+  }
+
+  .vpn-table tr.state-edge {
+    border-left: 4px solid var(--idle);
+  }
+
+  .vpn-table tr.state-edge[data-state="success"] {
+    border-left-color: var(--success);
+  }
+
+  .vpn-table tr.state-edge[data-state="warning"] {
+    border-left-color: var(--warning);
+  }
+
+  .vpn-table tr.state-edge[data-state="danger"] {
+    border-left-color: var(--danger);
+  }
+}

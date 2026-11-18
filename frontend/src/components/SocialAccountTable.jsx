@@ -17,6 +17,9 @@ const AUTH_LABELS = {
   unknown: 'Не перевірено',
 };
 
+// Колір смуги рядка за станом авторизації.
+const AUTH_STATE = { authorized: 'success', failed: 'danger', blocked: 'danger', unknown: 'idle' };
+
 function AuthBadge({ account }) {
   const status = account.authStatus || 'unknown';
   const debug = account.authDebug;
@@ -53,6 +56,32 @@ function AuthBadge({ account }) {
   );
 }
 
+// «Chrome 131, Windows» замість повного рядка User-Agent (повний - у підказці).
+function describeUA(ua) {
+  const pick = (re, name) => {
+    const m = re.exec(ua);
+    return m ? `${name} ${m[1]}` : null;
+  };
+  const browser =
+    pick(/Edg\/(\d+)/, 'Edge') ||
+    pick(/Firefox\/(\d+)/, 'Firefox') ||
+    pick(/Chrome\/(\d+)/, 'Chrome') ||
+    pick(/Version\/(\d+).*Safari/, 'Safari') ||
+    'браузер';
+  const os = /Android/.test(ua)
+    ? 'Android'
+    : /iPhone|iPad/.test(ua)
+      ? 'iOS'
+      : /Windows/.test(ua)
+        ? 'Windows'
+        : /Mac OS/.test(ua)
+          ? 'macOS'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : '';
+  return os ? `${browser}, ${os}` : browser;
+}
+
 function UserAgentCell({ account, presets, onChange }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(account.userAgent || '');
@@ -77,14 +106,10 @@ function UserAgentCell({ account, presets, onChange }) {
     const effectiveUA = account.userAgent || DEFAULT_USER_AGENT;
     return (
       <td data-label="User-Agent">
-        <span
-          className="muted"
-          title={effectiveUA}
-          style={{ display: 'inline-block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom' }}
-        >
-          {account.userAgent ? effectiveUA : `стандартний (${effectiveUA})`}
-        </span>{' '}
-        <button className="btn btn-sm" onClick={() => setEditing(true)}>
+        <div className="cell-sub" title={effectiveUA}>
+          {account.userAgent ? describeUA(effectiveUA) : `стандартний, ${describeUA(effectiveUA)}`}
+        </div>
+        <button className="link-btn ua-edit" onClick={() => setEditing(true)}>
           Змінити
         </button>
       </td>
@@ -166,9 +191,8 @@ export default function SocialAccountTable({ accounts, onDelete, onChange }) {
         <table className="vpn-table">
           <thead>
             <tr>
-              <th>Платформа</th>
-              <th>Назва</th>
-              <th>Логін</th>
+              <th>Акаунт</th>
+              <th>Телефон</th>
               <th>Пароль</th>
               <th>VPN</th>
               <th>Авторизація</th>
@@ -178,10 +202,22 @@ export default function SocialAccountTable({ accounts, onDelete, onChange }) {
           </thead>
           <tbody>
             {accounts.map((acc) => (
-              <tr key={acc._id}>
-                <td data-label="Платформа">{acc.platform}</td>
-                <td data-label="Назва">{acc.displayName || '-'}</td>
-                <td data-label="Логін">{acc.username}</td>
+              <tr key={acc._id} className="state-edge" data-state={AUTH_STATE[acc.authStatus] || 'idle'}>
+                <td data-label="Акаунт">
+                  <div className="cell-title">{acc.displayName || acc.username}</div>
+                  <div className="cell-sub">
+                    @{acc.username} <span className="tag">{acc.platform}</span>
+                  </div>
+                </td>
+                <td data-label="Телефон">
+                  {acc.androidSerial ? (
+                    <span title="Фізичний телефон (adb)">{acc.androidSerial}</span>
+                  ) : acc.androidProfileId ? (
+                    <span title="Профіль ManyFaces">емулятор {acc.androidProfileId}</span>
+                  ) : (
+                    <span className="muted">-</span>
+                  )}
+                </td>
                 <td data-label="Пароль">
                   <span className="password-cell">{revealed[acc._id] || '••••••••'}</span>
                   <button className="btn btn-sm" onClick={() => handleReveal(acc._id)}>

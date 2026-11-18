@@ -13,6 +13,9 @@ const androidMetrics = require("./androidMetrics");
 const { downloadAllToTempFiles, cleanupTempFiles } = require("./tempDownload");
 const { captureAuthDebug } = require("./authDebugService");
 const { isResting, scheduleRest, sleep, randomInt } = require("./humanize");
+const postPlan = require("./postPlan");
+const postMedia = require("./postMedia");
+const jobTemplate = require("./threadsJobTemplate");
 
 // Background "bot farm" loop. Everything the UI can trigger by hand (publish a
 // scheduled post, refresh metrics, fetch Threads comments) is also run here on a
@@ -43,7 +46,9 @@ const ANDROID_THREADS_PUBLISH = process.env.ANDROID_THREADS_PUBLISH !== "false";
 const ANDROID_STOP_AFTER_POST = process.env.ANDROID_STOP_AFTER_POST !== "false";
 // Як часто (на акаунт) збирати перегляди/лайки/відповіді зі «Статистики» Threads
 // на емуляторі. Кожен збір піднімає телефон (~2-3 хв), тож не частіше кількох
-// годин. ANDROID_METRICS_INTERVAL_MS=0 вимикає автоматичний збір.
+// годин. ANDROID_METRICS_INTERVAL_MS=0 вимикає автоматичний збір. Після кожної
+// публікації статистика знімається в тому ж сеансі (ANDROID_METRICS_AFTER_POST),
+// і відлік інтервалу починається заново - окремий збір лишається для днів без постів.
 const ANDROID_METRICS_INTERVAL_MS = Number(
   process.env.ANDROID_METRICS_INTERVAL_MS ?? 6 * 60 * 60 * 1000,
 );
@@ -91,22 +96,35 @@ async function publishToAccount(post, account, entry) {
         let via;
         if (androidOrchestrator.hasPhone(account)) {
           // Повний життєвий цикл на власному профілі-телефоні акаунта.
-          result = await androidOrchestrator.runForAccount(
-            account,
-            { type: "threadsPost", text: postText, publish: publishReal },
-            { stopAfter: ANDROID_STOP_AFTER_POST },
-          );
+          // Фото поста - локальні файли, які оркестратор заллє в галерею телефону.
+          const media = await postMedia.localFiles(urls);
+          try {
+            result = await androidOrchestrator.runForAccount(
+              account,
+              { type: "threadsPost", text: postText, publish: publishReal, media: media.paths },
+              {
+                stopAfter: ANDROID_STOP_AFTER_POST,
+                metricsAfterPost: androidMetrics.AFTER_POST,
+                dmAfter: true,
+              },
+            );
+          } finally {
+            media.cleanup();
+          }
           via = "orchestrator";
         } else {
           // Фолбек: єдиний уже запущений емулятор (один спільний пристрій).
           result = await androidBridge.threadsPost(postText, publishReal);
           via = "emulator";
         }
+        let metrics = null;
         if (publishReal) {
           entry.status = "published";
           entry.publishedAt = new Date();
           await post.save();
           await recordAuthResult(account, true, null);
+          // Статистика, знята в тому ж сеансі; пост уже збережено як published.
+          metrics = await androidMetrics.applyAfterPost(account, result);
         }
         account.restUntil = scheduleRest();
         await account.save();
@@ -119,6 +137,7 @@ async function publishToAccount(post, account, entry) {
           via,
           dryRun: !publishReal,
           info: result,
+          metrics,
         };
       }
 
@@ -216,7 +235,7 @@ async function publishDuePosts() {
     accounts: { $elemMatch: { status: "pending" } },
   }).populate(
     "accounts.account",
-    "platform username displayName userAgent profileId androidProfileId androidSerial",
+    "platform username displayName userAgent profileId androidProfileId androidSerial dmAutoReply commentAutoReply",
   );
 
   const summary = [];
@@ -229,6 +248,36 @@ async function publishDuePosts() {
           postId: post._id,
           username: "deleted-account",
           error: "Account not found",
+        });
+        continue;
+      }
+      // Шаблон вакансії: пост не за шаблоном не публікується, але лишається pending -
+      // після виправлення тексту піде сам.
+      const tplReason = account.platform === "threads" && jobTemplate.publishBlockReason(post.text);
+      if (tplReason) {
+        summary.push({
+          postId: post._id,
+          accountId: account._id,
+          username: account.username,
+          platform: account.platform,
+          published: false,
+          skipped: "job_template",
+          error: tplReason,
+        });
+        continue;
+      }
+      // Ліміт постів на день: зайве лишається pending і піде наступної доби.
+      if (
+        account.platform === "threads" &&
+        (await postPlan.publishedToday(account._id)) >= postPlan.DAILY_MAX
+      ) {
+        summary.push({
+          postId: post._id,
+          accountId: account._id,
+          username: account.username,
+          platform: account.platform,
+          published: false,
+          skipped: "daily_limit",
         });
         continue;
       }

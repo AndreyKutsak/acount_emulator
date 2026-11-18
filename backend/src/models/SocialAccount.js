@@ -41,6 +41,31 @@ const socialAccountSchema = new mongoose.Schema(
     // Коли востаннє збирали метрики дописів зі «Статистики» Threads на емуляторі
     // (services/androidMetrics.js) — шедулер повторює не частіше ANDROID_METRICS_INTERVAL_MS.
     androidMetricsAt: { type: Date, default: null },
+    // Автовідповіді на особисті повідомлення Threads (services/threadsDm.js):
+    // перевіряються в кожному сеансі на телефоні після «Статистики».
+    dmAutoReply: {
+      enabled: { type: Boolean, default: false },
+      // Скільки відповідей надіслати за один сеанс і за добу.
+      maxPerSession: { type: Number, default: 5 },
+      maxPerDay: { type: Number, default: 30 },
+      // Також «Запити» (люди, на яких акаунт не підписаний).
+      includeRequests: { type: Boolean, default: true },
+      lastRunAt: { type: Date, default: null },
+      lastError: { type: String, default: "" },
+    },
+    // Автовідповіді на коментарі під нашими постами (там же, після особистих).
+    // Коментарі беруться з «Дії → Розмови».
+    commentAutoReply: {
+      enabled: { type: Boolean, default: false },
+      maxPerSession: { type: Number, default: 5 },
+      maxPerDay: { type: Number, default: 30 },
+      // Лише свіжі коментарі: старші за стільки годин не чіпаємо.
+      maxAgeHours: { type: Number, default: 24 },
+      // Не відповідати, якщо під коментарем уже є відповідь (ваша чи чужа).
+      skipAnswered: { type: Boolean, default: true },
+      lastRunAt: { type: Date, default: null },
+      lastError: { type: String, default: "" },
+    },
     // Optional per-account proxy override. May contain credentials, so it is
     // stripped from every client-facing response (toSafeAccount).
     proxyConfig: { type: mongoose.Schema.Types.Mixed, default: null },

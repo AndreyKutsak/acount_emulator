@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { fetchAccounts } from '../api/socialAccounts';
+import { fetchJobTemplate, validatePost } from '../api/posts';
+import PostValidation from './PostValidation';
+import PostPhotos from './PostPhotos';
 
 function toLocalDateTime(value) {
   if (!value) return '';
@@ -11,27 +14,51 @@ function toLocalDateTime(value) {
 
 export default function PostForm({ onCreate, onSave, post, onCancel }) {
   const [text, setText] = useState('');
-  const [imagesText, setImagesText] = useState('');
+  const [images, setImages] = useState([]);
   const [scheduledAt, setScheduledAt] = useState('');
   const [accounts, setAccounts] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [validation, setValidation] = useState(null);
+  const [template, setTemplate] = useState(null);
   const isEditing = Boolean(post);
-  const images = imagesText
-    .split('\n')
-    .map((image) => image.trim())
-    .filter(Boolean);
+  const hasErrors = Boolean(validation && !validation.ok);
 
   useEffect(() => {
     fetchAccounts().then(setAccounts).catch(() => setAccounts([]));
+    fetchJobTemplate().then(setTemplate).catch(() => setTemplate(null));
   }, []);
 
   useEffect(() => {
     setText(post?.text || '');
-    setImagesText((post?.images || []).join('\n'));
+    setImages(post?.images || []);
     setScheduledAt(toLocalDateTime(post?.scheduledAt));
     setSelectedIds([]);
   }, [post]);
+
+  // Жива перевірка правил Threads (з паузою, щоб не смикати API на кожну літеру).
+  const linkedIds = isEditing
+    ? (post.accounts || []).map((entry) => entry.account?._id).filter(Boolean)
+    : selectedIds;
+  const linkedKey = linkedIds.join(',');
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      validatePost({
+        text,
+        accountIds: linkedIds,
+        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+        postId: post?._id,
+      })
+        .then((result) => !cancelled && setValidation(result))
+        .catch(() => !cancelled && setValidation(null));
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, scheduledAt, linkedKey, post?._id]);
 
   const toggleAccount = (id) => {
     setSelectedIds((prev) =>
@@ -41,12 +68,12 @@ export default function PostForm({ onCreate, onSave, post, onCancel }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (saving || (!isEditing && selectedIds.length === 0)) return;
+    if (saving || hasErrors || (!isEditing && selectedIds.length === 0)) return;
 
     const data = {
       text,
       images,
-      scheduledAt: scheduledAt || null,
+      scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
     };
 
     setSaving(true);
@@ -57,7 +84,7 @@ export default function PostForm({ onCreate, onSave, post, onCancel }) {
 
       if (succeeded && !isEditing) {
         setText('');
-        setImagesText('');
+        setImages([]);
         setScheduledAt('');
         setSelectedIds([]);
       }
@@ -77,22 +104,31 @@ export default function PostForm({ onCreate, onSave, post, onCancel }) {
           placeholder="Напишіть текст поста..."
           rows={7}
         />
-        <span className="post-field-hint">{text.length} символів</span>
+        <span className="post-template-row">
+          <span className={`post-field-hint${[...text.trim()].length > 500 ? ' post-field-over' : ''}`}>
+            {[...text.trim()].length} / 500 символів
+            {template?.required ? ' · для Threads обов’язковий шаблон вакансії' : ''}
+          </span>
+          {template && (
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => {
+                if (!text.trim() || window.confirm('Замінити поточний текст шаблоном?')) {
+                  setText(template.text);
+                }
+              }}
+            >
+              Вставити шаблон
+            </button>
+          )}
+        </span>
       </label>
 
+      <PostValidation validation={validation} />
+
       <div className="post-form-secondary">
-        <label className="field">
-          <span className="field-label">Фото або відео</span>
-          <textarea
-            value={imagesText}
-            onChange={(event) => setImagesText(event.target.value)}
-            placeholder={'Вставте URL медіафайлів\nКожне посилання — з нового рядка'}
-            rows={4}
-          />
-          <span className="post-field-hint">
-            {images.length ? `${images.length} файлів` : 'Можна додати кілька посилань'}
-          </span>
-        </label>
+        <PostPhotos value={images} onChange={setImages} />
         <label className="field">
           <span className="field-label">Запланувати публікацію</span>
           <input
@@ -160,7 +196,8 @@ export default function PostForm({ onCreate, onSave, post, onCancel }) {
         <button
           type="submit"
           className="btn btn-primary"
-          disabled={saving || (!isEditing && selectedIds.length === 0)}
+          disabled={saving || hasErrors || (!isEditing && selectedIds.length === 0)}
+          title={hasErrors ? 'Спершу виправте помилки перевірки' : undefined}
         >
           {saving ? 'Збереження...' : isEditing ? 'Зберегти зміни' : 'Створити пост'}
         </button>

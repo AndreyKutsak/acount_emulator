@@ -29,7 +29,11 @@ if (Test-Port 27017) {
     Log "MongoDB :27017 - НЕ слухає (backend може не піднятись)"
 }
 
-function Start-Svc($name, $bat) {
+function Start-Svc($name, $bat, $port) {
+    if ($port -and (Test-Port $port)) {
+        Log "пропущено: $name - порт $port уже слухає (не запускаю дублікат)"
+        return
+    }
     if (Test-Path $bat) {
         Start-Process -FilePath $bat -WindowStyle Hidden
         Log "запущено: $name"
@@ -38,10 +42,10 @@ function Start-Svc($name, $bat) {
     }
 }
 
-Start-Svc 'backend'   (Join-Path $root 'svc-backend.bat')
+Start-Svc 'backend'   (Join-Path $root 'svc-backend.bat') 5000
 Start-Sleep -Seconds 3
-Start-Svc 'frontend'  (Join-Path $root 'svc-frontend.bat')
-Start-Svc 'manyfaces' (Join-Path $root 'svc-manyfaces.bat')
-Start-Svc 'bridge'    (Join-Path $root 'svc-bridge.bat')
+Start-Svc 'frontend'  (Join-Path $root 'svc-frontend.bat') 5173
+Start-Svc 'manyfaces' (Join-Path $root 'svc-manyfaces.bat') 8000
+Start-Svc 'bridge'    (Join-Path $root 'svc-bridge.bat') 8900
 
 Log "=== start-all-hidden: усі процеси запущено ==="
