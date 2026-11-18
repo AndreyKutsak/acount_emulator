@@ -13,11 +13,14 @@ const statsRoutes = require("./routes/statsRoutes");
 const schedulerRoutes = require("./routes/schedulerRoutes");
 const telegramRoutes = require("./routes/telegramRoutes");
 const androidRoutes = require("./routes/androidRoutes");
+const manyfacesProxy = require("./routes/manyfacesProxy");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
 
 app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173" }));
+// ManyFaces за адресою сайту - до express.json(), бо тіло пересилається як є.
+app.use(manyfacesProxy.PREFIX, manyfacesProxy.router);
 app.use(express.json());
 
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
