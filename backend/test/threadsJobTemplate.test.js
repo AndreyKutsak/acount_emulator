@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { TEMPLATE, checkJobTemplate } = require("../src/services/threadsJobTemplate");
+const { TEMPLATE, SHORT_TEMPLATE, checkJobTemplate } = require("../src/services/threadsJobTemplate");
 const { validateText } = require("../src/services/threadsPostRules");
 
 const codes = (r) => r.errors.map((i) => i.code);
@@ -8,6 +8,17 @@ const codes = (r) => r.errors.map((i) => i.code);
 test("сам шаблон проходить і шаблон, і загальні правила", () => {
   assert.deepEqual(codes(checkJobTemplate(TEMPLATE)), []);
   assert.equal(validateText(TEMPLATE).ok, true);
+});
+
+test("короткий шаблон «набір» проходить, з тегом теж", () => {
+  assert.deepEqual(codes(checkJobTemplate(SHORT_TEMPLATE)), []);
+  assert.deepEqual(codes(checkJobTemplate(`${SHORT_TEMPLATE}\n#SMM`)), []);
+  assert.equal(validateText(SHORT_TEMPLATE).ok, true);
+});
+
+test("короткий шаблон без гачка чи без «куди йти» не проходить", () => {
+  assert.ok(codes(checkJobTemplate("Привіт усім\nБез досвіду\nНавчимо\nПишіть у шапку")).includes("tpl_lines"));
+  assert.ok(codes(checkJobTemplate("Шукаємо SMM-спеціалістів\nБез досвіду\nНавчимо з нуля")).includes("tpl_lines"));
 });
 
 test("вакансія у шаблоні з телефоном - без попередження про схему", () => {

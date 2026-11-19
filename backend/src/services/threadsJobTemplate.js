@@ -25,6 +25,36 @@ const TEMPLATE = `Пакувальник подарункових наборів
 👉 Деталі - за посиланням у шапці профілю
 #РоботаВінниця`;
 
+// Короткий шаблон «набір»: гачок + 1-3 рядки суті + куди йти. Без зарплати й графіка,
+// тег необов'язковий. Приклад - пост, що «залетів»:
+//   Шукаємо майбутніх SMM-спеціалістів 💙
+//   Без досвіду або з мінімальним.
+//   Навчимо та працевлаштуємо до нашої агенції.
+//   Уся інформація в шапці.
+const SHORT_TEMPLATE = `Шукаємо майбутніх SMM-спеціалістів 💙
+Без досвіду або з мінімальним.
+Навчимо та працевлаштуємо до нашої агенції.
+Уся інформація в шапці.`;
+
+const SHORT_MIN_LINES = 3;
+const SHORT_MAX_LINES = 5;
+const SHORT_HOOK_RE = /(?<![\p{L}])(?:шукає\p{L}*|запрошує\p{L}*|потрібн\p{L}*|набира\p{L}*|набір|відкрит\p{L}*\s+вакансі\p{L}*|вакансі\p{L}*)/iu;
+const SHORT_CTA_RE = /(?<![\p{L}])(?:шапц\p{L}*|профіл\p{L}*|посилан\p{L}*|телефон\p{L}*|дзвон\p{L}*)|\+?380\d{9}/iu;
+
+// Повертає список помилок короткого шаблону (порожній - пост йому відповідає).
+function checkShortTemplate(rawText) {
+  const lines = String(rawText || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const body = lines.length && /^#[\p{L}\d_]+$/u.test(lines[lines.length - 1]) ? lines.slice(0, -1) : lines;
+  const bad = [];
+  if (body.length < SHORT_MIN_LINES || body.length > SHORT_MAX_LINES) bad.push("short_lines");
+  if (lines.some((l) => [...l].length > MAX_LINE)) bad.push("short_long_line");
+  const hook = body[0] || "";
+  const hookLen = [...hook].length;
+  if (hookLen < TITLE_MIN || hookLen > TITLE_MAX || !SHORT_HOOK_RE.test(hook)) bad.push("short_hook");
+  if (!SHORT_CTA_RE.test(body[body.length - 1] || "")) bad.push("short_cta");
+  return bad;
+}
+
 const MODE = String(process.env.THREADS_JOB_TEMPLATE || "required").toLowerCase();
 const REQUIRED = MODE !== "off";
 
@@ -62,7 +92,10 @@ function checkJobTemplate(rawText) {
     .filter(Boolean);
   if (!lines.length) return { errors, warnings };
 
-  const hint = "Скористайтеся кнопкою «Вставити шаблон».";
+  // Короткий шаблон «набір» - рівноправна альтернатива повному.
+  if (!checkShortTemplate(rawText).length) return { errors, warnings };
+
+  const hint = "Скористайтеся кнопкою «Вставити шаблон» (повний або короткий).";
 
   if (lines.length < MIN_LINES || lines.length > MAX_LINES) {
     errors.push(err("tpl_lines", `Шаблон: ${lines.length} рядків, потрібно ${MIN_LINES}-${MAX_LINES} коротких рядків (посада, місце, зарплата, графік, питання, як відгукнутися, тег). ${hint}`));
@@ -141,12 +174,13 @@ function checkJobTemplate(rawText) {
 // Для публікації: null - можна, інакше текст причини. Заборонені слова блокують
 // завжди (пост міг бути створений до того, як слово додали в список), шаблон - якщо
 // він обов'язковий.
-function publishBlockReason(text) {
+// useTemplate=false - пост без шаблону (галочка у формі): лише заборонені слова.
+function publishBlockReason(text, { useTemplate = true } = {}) {
   const words = forbiddenWordsReason(text);
   if (words) return words;
-  if (!REQUIRED) return null;
+  if (!REQUIRED || useTemplate === false) return null;
   const { errors } = checkJobTemplate(text);
   return errors.length ? `Пост не за шаблоном вакансії: ${errors.map((e) => e.code).join(", ")}` : null;
 }
 
-module.exports = { TEMPLATE, REQUIRED, checkJobTemplate, publishBlockReason };
+module.exports = { TEMPLATE, SHORT_TEMPLATE, checkShortTemplate, REQUIRED, checkJobTemplate, publishBlockReason };

@@ -994,3 +994,149 @@ a.btn {
     flex: 1 1 100%;
   }
 }
+
+/* --- Таблиці на телефоні: рядок - картка, у комірці підпис зверху, значення на
+   всю ширину й ліворуч (замість «підпис | значення праворуч», що ламав довгі
+   тексти й комірки з кількома елементами). --- */
+@media (max-width: 640px) {
+  .vpn-table tr,
+  .sessions-table tr {
+    padding: 14px 16px;
+  }
+
+  .vpn-table td,
+  .sessions-table td {
+    display: block;
+    padding: 7px 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .vpn-table td[data-label]::before,
+  .sessions-table td[data-label]::before {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
+  .vpn-table td > * + *,
+  .sessions-table td > * + * {
+    margin-top: 3px;
+  }
+
+  .vpn-table td .status-badge {
+    margin-right: 6px;
+  }
+
+  .vpn-table td.vpn-actions,
+  .sessions-table td.vpn-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .vpn-table td.vpn-actions::before,
+  .sessions-table td.vpn-actions::before {
+    display: none;
+  }
+
+  .vpn-table td.vpn-actions > * + * {
+    margin-top: 0;
+  }
+
+  .vpn-table td.vpn-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .post-text-cell {
+    white-space: pre-wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Перша комірка - заголовок картки: підпис «Правило»/«Акаунт» зайвий. */
+  .vpn-table td:first-child::before {
+    display: none;
+  }
+
+  .vpn-table td:first-child .cell-title {
+    font-size: 16px;
+  }
+
+  /* Короткі значення - в один рядок «підпис ... значення». */
+  .vpn-table td.td-inline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+  }
+
+  .vpn-table td.td-inline::before {
+    margin: 0;
+  }
+
+  .vpn-table td.td-inline > * + * {
+    margin-top: 0;
+  }
+}
+
+/* Форма нового поста: при прокрутці до неї - не ховатись під закріпленою шапкою. */
+.post-create-card {
+  scroll-margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .post-create-card {
+    scroll-margin-top: 74px;
+  }
+}
+
+.post-template-toggle {
+  min-height: 34px;
+}
+
+.schedule-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Чого бракує для збереження поста - замість мовчазної вимкненої кнопки. */
+.form-blockers {
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  font-size: 14px;
+}
+
+.form-blockers ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.form-blockers .link-btn {
+  color: var(--danger);
+  text-align: left;
+}
+
+/* Позначка типу шаблону поста */
+.post-kind {
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+.post-kind-short { color: #2563eb; }
+.post-kind-free { color: #6b7280; }

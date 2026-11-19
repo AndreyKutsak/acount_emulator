@@ -99,6 +99,11 @@ export default function PostTable({ posts, onDelete, onEdit, onChange }) {
             <div className="post-card-main">
               <div className="post-card-topline">
                 <PostStatusBadge status={post.overallStatus} />
+                {post.templateKind && (
+                  <span className={`post-kind post-kind-${post.templateKind}`}>
+                    {{ short: 'Короткий', job: 'Вакансія', free: 'Без шаблону' }[post.templateKind]}
+                  </span>
+                )}
                 <span className="post-schedule">
                   {post.scheduledAt
                     ? `Заплановано: ${formatDate(post.scheduledAt)}`
