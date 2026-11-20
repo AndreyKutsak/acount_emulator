@@ -9,7 +9,8 @@
 //   3) чекає завершення завантаження;
 //   4) застосовує профіль маскування цього акаунта (device_profiles.json,
 //      ключ = androidProfileId);
-//   5) виконує дію (threadsPost);
+//   5) виконує дію (threadsPost); з opts.metricsAfterPost після підтвердженої
+//      публікації ще й знімає «Статистику» в тому ж сеансі;
 //   6) закриває застосунок;
 //   7) за потреби гасить емулятор (stopAfter) — щоб звільнити ресурси й
 //      послідовно підняти наступний акаунт з іншого профілю.
@@ -19,12 +20,15 @@
 const SocialAccount = require("../models/SocialAccount");
 const emulator = require("./emulatorService");
 const bridge = require("./androidBridgeService");
+const { randomInt } = require("./humanize");
+const threadsDm = require("./threadsDm");
 
 const THREADS_PACKAGE = process.env.ANDROID_THREADS_PACKAGE || "com.instagram.barcelona";
 const BOOT_TIMEOUT_MS = Number(process.env.ANDROID_BOOT_TIMEOUT_MS || 180000);
-// Трохи більше за таймаут завантаження ManyFaces (300 с): холодний старт (напр.
-// після скидання зіпсованого quickboot-знімка) не повинен обриватись нами раніше.
-const SERIAL_TIMEOUT_MS = Number(process.env.ANDROID_SERIAL_TIMEOUT_MS || 330000);
+// Має покривати найгірший запуск ManyFaces: зависле відновлення зі знімка (до 120 с),
+// примусове вбивство й видалення знімка, потім холодний старт (до 300 с) у тому ж
+// запуску. Інакше ми здаємось раніше, ніж ManyFaces встигне відновити телефон.
+const SERIAL_TIMEOUT_MS = Number(process.env.ANDROID_SERIAL_TIMEOUT_MS || 480000);
 // Ексклюзивний режим (за замовчуванням увімкнено): одночасно працює лише один
 // телефон. Перед стартом потрібного профілю всі інші запущені Android-профілі
 // гасяться — два емулятори по 1.5 ГБ не вміщаються в пам'ять, і другий зависає
@@ -187,9 +191,55 @@ async function applySpoof(profileId, serial, log) {
   }
 }
 
+// Чи знімати «Статистику» одразу після поста, поки телефон уже піднятий. Лише
+// коли Threads підтвердив публікацію: threads_metrics перезапускає застосунок, а
+// непідтверджений пост ще в черзі завантаження - перезапуск відклав би його.
+function shouldCollectAfterPost(behavior, result, opts = {}) {
+  return (
+    opts.metricsAfterPost === true &&
+    behavior?.type === "threadsPost" &&
+    behavior.publish === true &&
+    result?.confirmed === true
+  );
+}
+
+// Best-effort: збій статистики не робить публікацію невдалою - інакше пост
+// позначили б failed і могли б опублікувати вдруге.
+async function collectMetricsAfterPost(serial, log) {
+  await sleep(randomInt(3000, 8000)); // людина не відкриває статистику в ту ж секунду
+  try {
+    const r = await bridge.threadsMetrics(serial);
+    const posts = r?.posts || [];
+    log.push({ step: "threadsMetrics", ok: true, afterPost: true, posts: posts.length });
+    return { ok: true, posts };
+  } catch (err) {
+    log.push({ step: "threadsMetrics", ok: false, afterPost: true, error: err.message });
+    return { ok: false, error: err.message };
+  }
+}
+
+// Залити фото поста в галерею телефону по одному. Пауза між файлами - щоб
+// галерея (сортує за часом додавання, з точністю до секунди) показала їх саме
+// в цьому порядку: потік вибирає останні N плиток. -> шляхи на пристрої.
+async function pushPostMedia(files, serial, log) {
+  const dests = [];
+  for (const file of files || []) {
+    const r = await bridge.pushMedia(file, serial);
+    dests.push(r.dest);
+    await sleep(1500);
+  }
+  if (dests.length) log.push({ step: "media", ok: true, count: dests.length });
+  return dests;
+}
+
 // Головне: виконати поведінку для одного акаунта в межах його «телефону».
-// behavior: { type: "threadsPost", text, publish }
-// opts: { stopAfter=true, applySpoofFirst=true, closeApp=true }
+// behavior: { type: "threadsPost", text, publish, media? } (media - локальні файли фото)
+// opts: { stopAfter=true, applySpoofFirst=true, closeApp=true, metricsAfterPost=false,
+//         dmAfter=false }
+// З metricsAfterPost результат має поле metrics: { ok, posts } | { ok: false, error };
+// записати їх у пости - androidMetrics.applyAfterPost, коли пост уже збережено.
+// З dmAfter після поста/«Статистики» ще й відповідаємо на особисті й коментарі
+// (threadsDm, якщо їх увімкнено для акаунта); підсумки - у полях dm і comments.
 async function runForAccount(accountOrId, behavior, opts = {}) {
   const { stopAfter = true, applySpoofFirst = true, closeApp = true } = opts;
   const account =
@@ -312,13 +362,31 @@ async function runForAccount(accountOrId, behavior, opts = {}) {
     // --- виконання поведінки ---
     let result;
     if (behavior.type === "threadsPost") {
-      result = await bridge.threadsPost(behavior.text, behavior.publish === true, serial);
+      const media = await pushPostMedia(behavior.media, serial, log);
+      result = await bridge.threadsPost(behavior.text, behavior.publish === true, serial, media);
       log.push({ step: "threadsPost", ok: true, publish: behavior.publish === true, result });
     } else if (behavior.type === "threadsMetrics") {
       result = await bridge.threadsMetrics(serial);
       log.push({ step: "threadsMetrics", ok: true, posts: (result?.posts || []).length });
+    } else if (behavior.type === "threadsDm" || behavior.type === "threadsComments") {
+      // Лише особисті чи коментарі (ручний запуск з панелі) - виконуються нижче.
     } else {
       throw Object.assign(new Error(`невідома поведінка: ${behavior.type}`), { status: 400 });
+    }
+
+    let metrics;
+    if (shouldCollectAfterPost(behavior, result, opts)) {
+      metrics = await collectMetricsAfterPost(serial, log);
+    }
+    let dm;
+    if (threadsDm.shouldRunDm(behavior, result, opts)) {
+      dm = await threadsDm.handleInbox(account, serial, log);
+      if (behavior.type === "threadsDm") result = dm;
+    }
+    let comments;
+    if (threadsDm.shouldRunComments(behavior, result, opts)) {
+      comments = await threadsDm.handleComments(account, serial, log);
+      if (behavior.type === "threadsComments") result = comments;
     }
 
     // --- закрити застосунок ---
@@ -332,7 +400,7 @@ async function runForAccount(accountOrId, behavior, opts = {}) {
     }
 
     log.push({ step: "done", ok: true });
-    return { account: account.username, profileId, serial, ok: true, log, result,
+    return { account: account.username, profileId, serial, ok: true, log, result, metrics, dm, comments,
              tookMs: Date.now() - started };
   } catch (err) {
     log.push({ step: "error", error: err.message, status: err.status });
@@ -373,6 +441,7 @@ async function runQueue(items, opts = {}) {
 
 module.exports = {
   hasPhone,
+  shouldCollectAfterPost,
   runForAccount,
   runQueue,
   ensureProfileRunning,

@@ -93,7 +93,7 @@ export default function DashboardPage() {
       {error && <p className="error">{error}</p>}
 
       <div style={{ marginBottom: 16 }}>
-        <EmulatorControl />
+        <EmulatorControl compact />
       </div>
 
       <div className="stat-grid">
@@ -154,9 +154,9 @@ export default function DashboardPage() {
       <div className="card">
         <div className="card-title">Автоматизація</div>
         <p className="muted" style={{ marginTop: 0 }}>
-          Планувальник {stats.scheduler.enabled ? "увімкнено" : "вимкнено"} ·
-          інтервал {Math.round(stats.scheduler.intervalMs / 1000)} с · останній
-          запуск: {formatDate(stats.scheduler.lastRunAt)}
+          Планувальник {stats.scheduler.enabled ? "увімкнено" : "вимкнено"}, перевіряє
+          кожні {Math.round(stats.scheduler.intervalMs / 1000)} с. Остання перевірка:{" "}
+          {formatDate(stats.scheduler.lastRunAt)}.
         </p>
         {stats.scheduler.lastSummary && (
           <p className="muted">

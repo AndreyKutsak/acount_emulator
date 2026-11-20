@@ -7,6 +7,7 @@ import VpnServersPage from "./pages/VpnServersPage";
 import SocialAccountsPage from "./pages/SocialAccountsPage";
 import PostsPage from "./pages/PostsPage";
 import ThreadsCommentsPage from "./pages/ThreadsCommentsPage";
+import ThreadsDmPage from "./pages/ThreadsDmPage";
 import TelegramPage from "./pages/TelegramPage";
 import DashboardPage from "./pages/DashboardPage";
 import AndroidPage from "./pages/AndroidPage";
@@ -67,27 +68,55 @@ function ItemsPage() {
   );
 }
 
+// Розділи, згруповані за тим, що оператор робить: щоденна робота, пристрої,
+// облікові записи, довідка. Порядок у групі - від найчастішого.
 const TABS = [
-  { id: "dashboard", label: "Огляд", Component: DashboardPage },
-  { id: "profiles", label: "Профілі", Component: ProfilesPage },
-  { id: "help", label: "📘 Інструкція", Component: HelpPage },
-  { id: "posts", label: "Пости", Component: PostsPage },
-  {
-    id: "threads-comments",
-    label: "Коментарі",
-    Component: ThreadsCommentsPage,
-  },
-  { id: "accounts", label: "Акаунти", Component: SocialAccountsPage },
-  { id: "telegram", label: "Telegram", Component: TelegramPage },
-  { id: "android", label: "Android", Component: AndroidPage },
-  { id: "vpn", label: "VPN сервери", Component: VpnServersPage },
-  { id: "items", label: "Інші", Component: ItemsPage },
+  { id: "dashboard", group: "Робота", label: "Огляд", Component: DashboardPage },
+  { id: "posts", group: "Робота", label: "Пости", Component: PostsPage },
+  { id: "threads-dm", group: "Робота", label: "Автовідповіді", Component: ThreadsDmPage },
+  { id: "threads-comments", group: "Робота", label: "Коментарі (веб)", Component: ThreadsCommentsPage },
+  { id: "android", group: "Пристрої", label: "Телефони", Component: AndroidPage },
+  { id: "profiles", group: "Пристрої", label: "Профілі", Component: ProfilesPage },
+  { id: "accounts", group: "Облікові записи", label: "Акаунти", Component: SocialAccountsPage },
+  { id: "telegram", group: "Облікові записи", label: "Telegram", Component: TelegramPage },
+  { id: "vpn", group: "Облікові записи", label: "VPN сервери", Component: VpnServersPage },
+  { id: "help", group: "Довідка", label: "Інструкція", Component: HelpPage },
+  { id: "items", group: "Довідка", label: "Службові записи", Component: ItemsPage },
 ];
+const GROUPS = [...new Set(TABS.map((t) => t.group))];
+
+// Нижня панель на телефоні: розділи, куди заходять щодня; решта - у «Ще».
+const BOTTOM_TABS = [
+  { id: "dashboard", label: "Огляд", icon: "M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-3H4zM14 7h6V4h-6z" },
+  { id: "posts", label: "Пости", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
+  { id: "threads-dm", label: "Відповіді", icon: "M4 5h16v11H9l-5 4zM8 9h8M8 12h5" },
+  { id: "android", label: "Телефони", icon: "M7 3h10v18H7zM11 18h2" },
+];
+const MORE_ICON = "M4 7h16M4 12h16M4 17h16";
+
+function readSavedTab() {
+  try {
+    const saved = localStorage.getItem("treds.tab");
+    return TABS.some((t) => t.id === saved) ? saved : "dashboard";
+  } catch {
+    return "dashboard";
+  }
+}
 
 export default function App() {
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTabState] = useState(readSavedTab);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const Active = TABS.find((t) => t.id === tab).Component;
+  const setTab = (id) => {
+    setTabState(id);
+    window.scrollTo(0, 0);
+    try {
+      localStorage.setItem("treds.tab", id);
+    } catch {
+      // приватний режим - просто не запам'ятовуємо
+    }
+  };
+  const inBottom = BOTTOM_TABS.some((t) => t.id === tab);
 
   useEffect(() => {
     if (!mobileMenuOpen) return undefined;
@@ -105,7 +134,7 @@ export default function App() {
       <header className="mobile-header">
         <div className="mobile-brand">
           <span className="brand-name">Treds</span>
-          <span className="brand-tag">SMM агенція</span>
+          <span className="brand-tag">пульт керування</span>
         </div>
         <button
           type="button"
@@ -139,30 +168,64 @@ export default function App() {
           <span className="brand-mark" aria-hidden="true">T</span>
           <div>
             <div className="brand-name">Treds</div>
-            <div className="brand-tag">SMM агенція</div>
+            <div className="brand-tag">пульт керування</div>
           </div>
         </div>
-        <div className="sidebar-section-label">Робочий простір</div>
         <nav className="nav" id="app-navigation" aria-label="Основна навігація">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              className={`nav-item${tab === t.id ? " active" : ""}`}
-              aria-current={tab === t.id ? "page" : undefined}
-              onClick={() => {
-                setTab(t.id);
-                setMobileMenuOpen(false);
-              }}
-            >
-              {t.label}
-            </button>
+          {GROUPS.map((g) => (
+            <div key={g} className="nav-group">
+              <div className="sidebar-section-label">{g}</div>
+              {TABS.filter((t) => t.group === g).map((t) => (
+                <button
+                  key={t.id}
+                  className={`nav-item${tab === t.id ? " active" : ""}`}
+                  aria-current={tab === t.id ? "page" : undefined}
+                  onClick={() => {
+                    setTab(t.id);
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
-        <div className="sidebar-footer">Панель керування</div>
       </aside>
       <main className="main">
         <Active />
       </main>
+      <nav className="bottom-nav" aria-label="Швидкі розділи">
+        {BOTTOM_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`bottom-nav-item${tab === t.id ? " active" : ""}`}
+            aria-current={tab === t.id ? "page" : undefined}
+            onClick={() => {
+              setTab(t.id);
+              setMobileMenuOpen(false);
+            }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d={t.icon} />
+            </svg>
+            <span>{t.label}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          className={`bottom-nav-item${!inBottom || mobileMenuOpen ? " active" : ""}`}
+          aria-expanded={mobileMenuOpen}
+          aria-controls="app-navigation"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d={MORE_ICON} />
+          </svg>
+          <span>{inBottom ? "Ще" : TABS.find((t) => t.id === tab).label}</span>
+        </button>
+      </nav>
     </div>
   );
 }

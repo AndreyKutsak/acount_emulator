@@ -444,6 +444,7 @@ class ThreadsPostBody(BaseModel):
     text: str
     publish: bool = True          # False = заповнити композер, але НЕ публікувати
     serial: Optional[str] = None
+    media: list[str] = []         # шляхи фото на пристрої (уже в галереї), у порядку поста
 
 
 def _run_behavior(name: str, d: u2.Device, fn, *args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -468,7 +469,8 @@ def behavior_threads_post(body: ThreadsPostBody) -> dict[str, Any]:
     """Поведінка: створити пост у Threads (див. flows.threads_post)."""
     d = dev(body.serial)
     log.info("threads_post start serial=%s publish=%s len=%d", d.serial, body.publish, len(body.text))
-    return _run_behavior("threads_post", d, flows.threads_post, body.text, publish=body.publish)
+    return _run_behavior("threads_post", d, flows.threads_post, body.text, publish=body.publish,
+                         media=body.media)
 
 
 class SerialBody(BaseModel):
@@ -482,6 +484,77 @@ def behavior_threads_metrics(body: Optional[SerialBody] = None) -> dict[str, Any
     d = dev(body.serial if body else None)
     log.info("threads_metrics start serial=%s", d.serial)
     return _run_behavior("threads_metrics", d, flows.threads_metrics)
+
+
+class DmScanBody(BaseModel):
+    serial: Optional[str] = None
+    folders: list[str] = ["inbox", "requests"]
+    known: list[str] = []          # підписи рядків, уже оброблених бекендом
+    max_open: int = 8
+
+
+@app.post("/behavior/threads-dm-scan")
+def behavior_threads_dm_scan(body: DmScanBody) -> dict[str, Any]:
+    """Поведінка: непрочитані особисті зі «Вхідних»/«Запитів» (flows.threads_dm_scan).
+    Нічого не надсилає."""
+    d = dev(body.serial)
+    log.info("threads_dm_scan start serial=%s folders=%s", d.serial, body.folders)
+    return _run_behavior("threads_dm_scan", d, flows.threads_dm_scan,
+                         folders=body.folders, known=body.known, max_open=body.max_open)
+
+
+class CommentsScanBody(BaseModel):
+    serial: Optional[str] = None
+    max_rows: int = 30
+
+
+@app.post("/behavior/threads-comments-scan")
+def behavior_threads_comments_scan(body: CommentsScanBody) -> dict[str, Any]:
+    """Поведінка: коментарі під нашими постами з «Дії → Розмови» (flows.threads_comments_scan)."""
+    d = dev(body.serial)
+    log.info("threads_comments_scan start serial=%s", d.serial)
+    return _run_behavior("threads_comments_scan", d, flows.threads_comments_scan, max_rows=body.max_rows)
+
+
+class CommentReplyItem(BaseModel):
+    author: str
+    text: str
+    context: str = ""
+    reply: str
+
+
+class CommentsReplyBody(BaseModel):
+    serial: Optional[str] = None
+    items: list[CommentReplyItem]
+
+
+@app.post("/behavior/threads-comments-reply")
+def behavior_threads_comments_reply(body: CommentsReplyBody) -> dict[str, Any]:
+    """Поведінка: опублікувати відповіді на коментарі (flows.threads_comments_reply)."""
+    d = dev(body.serial)
+    log.info("threads_comments_reply start serial=%s comments=%d", d.serial, len(body.items))
+    return _run_behavior("threads_comments_reply", d, flows.threads_comments_reply,
+                         [i.model_dump() if hasattr(i, "model_dump") else i.dict() for i in body.items])
+
+
+class DmSendItem(BaseModel):
+    username: str
+    folder: str = "inbox"
+    texts: list[str]
+
+
+class DmSendBody(BaseModel):
+    serial: Optional[str] = None
+    items: list[DmSendItem]
+
+
+@app.post("/behavior/threads-dm-send")
+def behavior_threads_dm_send(body: DmSendBody) -> dict[str, Any]:
+    """Поведінка: надіслати відповіді в особисті (flows.threads_dm_send)."""
+    d = dev(body.serial)
+    log.info("threads_dm_send start serial=%s chats=%d", d.serial, len(body.items))
+    return _run_behavior("threads_dm_send", d, flows.threads_dm_send,
+                         [i.model_dump() if hasattr(i, "model_dump") else i.dict() for i in body.items])
 
 
 # ----------------------------------------- профіль маскування пристрою ----

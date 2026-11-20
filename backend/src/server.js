@@ -8,6 +8,7 @@ const telegramAutoComment = require("./services/telegramAutoComment");
 const telegramAutoReply = require("./services/telegramAutoReply");
 const emulatorService = require("./services/emulatorService");
 const TelegramAccount = require("./models/TelegramAccount");
+const postWords = require("./services/postWords");
 
 const PORT = process.env.PORT || 5000;
 const VPN_CHECK_INTERVAL_MS =
@@ -17,6 +18,8 @@ connectDB()
   // The old unconditional unique index on phone is replaced by one that ignores
   // empty phones (QR / session logins); syncIndexes drops the old one.
   .then(() => TelegramAccount.syncIndexes())
+  // Заборонені слова для постів: з бази (першого запуску - стандартний набір).
+  .then(() => postWords.init())
   .then(() => {
     const server = app.listen(PORT, () =>
       console.log(`Server running on port ${PORT}`),

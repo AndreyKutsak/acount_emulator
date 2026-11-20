@@ -18,3 +18,21 @@ export const publishPostNow = (postId, accountId) =>
 
 export const refreshPostMetrics = (postId, accountId) =>
   api.post('/automation/refresh-metrics', { postId, accountId }).then((res) => res.data);
+
+export const validatePost = (data) => api.post('/posts/validate', data).then((res) => res.data);
+
+export const fetchJobTemplate = () => api.get('/posts/template').then((res) => res.data);
+
+export const fetchDailyPlan = (date) =>
+  api.get('/posts/daily-plan', { params: date ? { date } : {} }).then((res) => res.data);
+
+// Фото до поста: сам файл у тілі запиту -> { url } для images.
+export const uploadPostImage = (file, onProgress) =>
+  api
+    .post('/posts/upload-image', file, {
+      params: { name: file.name },
+      headers: { 'Content-Type': 'application/octet-stream' },
+      timeout: 0,
+      onUploadProgress: (e) => onProgress?.(e.total ? e.loaded / e.total : 0),
+    })
+    .then((res) => res.data);

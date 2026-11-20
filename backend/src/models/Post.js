@@ -24,6 +24,9 @@ const postSchema = new mongoose.Schema(
   {
     text: { type: String, default: '' },
     images: { type: [String], default: [] },
+    // Перевіряти за шаблоном вакансії (threadsJobTemplate). false - пост не вакансія
+    // («про життя», опитування): шаблон не вимагається; заборонені слова діють завжди.
+    jobTemplate: { type: Boolean, default: true },
     scheduledAt: { type: Date, default: null },
     accounts: { type: [postAccountSchema], default: [] },
   },
@@ -52,7 +55,14 @@ postSchema.methods.toSummary = function toSummary() {
     { views: 0, likes: 0, comments: 0 }
   );
 
-  return { ...obj, overallStatus, metrics };
+  // Позначка типу: short - короткий шаблон «набір», job - повний шаблон вакансії,
+  // free - пост без шаблону («про життя»).
+  const { checkShortTemplate } = require('../services/threadsJobTemplate');
+  let templateKind = 'job';
+  if (obj.jobTemplate === false) templateKind = 'free';
+  else if (obj.text && !checkShortTemplate(obj.text).length) templateKind = 'short';
+
+  return { ...obj, overallStatus, metrics, templateKind };
 };
 
 module.exports = mongoose.model('Post', postSchema);

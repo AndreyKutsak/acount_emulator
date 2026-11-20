@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const SocialAccount = require("../models/SocialAccount");
 const VpnSession = require("../models/VpnSession");
 const Post = require("../models/Post");
+const jobTemplate = require("../services/threadsJobTemplate");
 const { decrypt } = require("../services/cryptoService");
 const { captureAuthDebug } = require("../services/authDebugService");
 const threadsMcpService = require("../services/threadsMcpService");
@@ -21,6 +22,7 @@ const tlsClient = require("../services/tlsClient");
 const androidBridge = require("../services/androidBridgeService");
 const androidOrchestrator = require("../services/androidOrchestrator");
 const androidMetrics = require("../services/androidMetrics");
+const postMedia = require("../services/postMedia");
 
 // Ті самі прапорці, що й у планувальнику: постинг Threads через Android-емулятор.
 const ANDROID_THREADS_POSTING = process.env.ANDROID_THREADS_POSTING === "true";
@@ -509,6 +511,8 @@ exports.publishPostForAccount = async (req, res) => {
         .json({ message: "Account not linked to this post" });
 
     if (account.platform === "threads") {
+      const tplReason = jobTemplate.publishBlockReason(text ?? post.text, { useTemplate: post.jobTemplate !== false });
+      if (tplReason) return res.status(400).json({ message: tplReason });
       // Емуляторний шлях: нативний застосунок Threads в Android-емуляторі (міст).
       if (ANDROID_THREADS_POSTING) {
         const postText = text ?? post.text;
@@ -518,11 +522,21 @@ exports.publishPostForAccount = async (req, res) => {
             // У акаунта є власний ManyFaces-профіль (телефон) — довіряємо
             // оркестратору: він сам підніме саме цей емулятор, застосує
             // спуф, постить і погасить емулятор після (звільнення ресурсів).
-            result = await androidOrchestrator.runForAccount(
-              account,
-              { type: "threadsPost", text: postText, publish: ANDROID_THREADS_PUBLISH },
-              { stopAfter: true },
-            );
+            const media = await postMedia.localFiles(imageUrls ?? post.images ?? []);
+            try {
+              result = await androidOrchestrator.runForAccount(
+                account,
+                {
+                  type: "threadsPost",
+                  text: postText,
+                  publish: ANDROID_THREADS_PUBLISH,
+                  media: media.paths,
+                },
+                { stopAfter: true, metricsAfterPost: androidMetrics.AFTER_POST, dmAfter: true },
+              );
+            } finally {
+              media.cleanup();
+            }
           } else {
             // Немає прив'язаного профілю — старий шлях: б'ємо в уже запущений
             // (вручну) емулятор напряму, нічого не стартуємо й не гасимо.
@@ -533,6 +547,8 @@ exports.publishPostForAccount = async (req, res) => {
             entry.publishedAt = new Date();
             await post.save();
             await recordAuthResult(account, true, null);
+            // Статистика, знята в тому ж сеансі; пост уже збережено як published.
+            await androidMetrics.applyAfterPost(account, result);
           }
           const populated = await Post.findById(post._id).populate(
             "accounts.account",

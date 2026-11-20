@@ -24,16 +24,36 @@ if errorlevel 1 (
 echo.
 
 REM --- Backend: Express API :5000 ---
-start "Treds Backend :5000" cmd /k "cd /d %~dp0backend && npm run dev"
+netstat -ano | findstr ":5000 " | findstr LISTENING >nul 2>&1
+if not errorlevel 1 (
+  echo [skip] :5000 вже працює - другий екземпляр не запускаю
+) else (
+  start "Treds Backend :5000" cmd /k "cd /d %~dp0backend && npm run dev"
+)
 
 REM --- Frontend: React/Vite :5173 ---
-start "Treds Frontend :5173" cmd /k "cd /d %~dp0frontend && npm run dev"
+netstat -ano | findstr ":5173 " | findstr LISTENING >nul 2>&1
+if not errorlevel 1 (
+  echo [skip] :5173 вже працює - другий екземпляр не запускаю
+) else (
+  start "Treds Frontend :5173" cmd /k "cd /d %~dp0frontend && npm run dev"
+)
 
 REM --- ManyFaces: емулятори :8000 (легкий Android-пресет) ---
-start "ManyFaces :8000" cmd /k "cd /d %~dp0backend\ManyFaces && set ANTIDETECT_ANDROID_IMAGE=system-images;android-29;google_apis;x86_64&& set ANTIDETECT_ANDROID_MEMORY=1536&& set ANTIDETECT_ANDROID_CORES=4&& set ANTIDETECT_ANDROID_GPU=host&& .venv\Scripts\python.exe run.py"
+netstat -ano | findstr ":8000 " | findstr LISTENING >nul 2>&1
+if not errorlevel 1 (
+  echo [skip] :8000 вже працює - другий екземпляр не запускаю
+) else (
+  start "ManyFaces :8000" cmd /k "cd /d %~dp0backend\ManyFaces && set ANTIDETECT_ANDROID_IMAGE=system-images;android-29;google_apis;x86_64&& set ANTIDETECT_ANDROID_MEMORY=2048&& set ANTIDETECT_ANDROID_CORES=4&& set ANTIDETECT_ANDROID_GPU=host&& .venv\Scripts\python.exe run.py"
+)
 
 REM --- Android bridge + панель керування :8900 ---
-start "Android Bridge :8900" cmd /k "cd /d %~dp0automation && set ADBUTILS_ADB_PATH=%USERPROFILE%\.antidetect\android\sdk\platform-tools\adb.exe&& .venv\Scripts\python.exe bridge.py"
+netstat -ano | findstr ":8900 " | findstr LISTENING >nul 2>&1
+if not errorlevel 1 (
+  echo [skip] :8900 вже працює - другий екземпляр не запускаю
+) else (
+  start "Android Bridge :8900" cmd /k "cd /d %~dp0automation && set ADBUTILS_ADB_PATH=%USERPROFILE%\.antidetect\android\sdk\platform-tools\adb.exe&& .venv\Scripts\python.exe bridge.py"
+)
 
 echo   Вiдкрито 4 вiкна сервiсiв. Адреси:
 echo     Frontend (додаток)   http://localhost:5173

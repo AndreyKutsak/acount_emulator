@@ -1,5 +1,7 @@
 # Treds — Full Stack App (React + Node/Express + MongoDB)
 
+> **Розгортання на новому ПК** (усі частини, телефони, перенесення даних): див. [DEPLOY.md](DEPLOY.md).
+
 ## Структура
 
 - `backend/` — Express API + MongoDB (Mongoose), фоновий планувальник, Telegram (MTProto) і браузерна автоматизація (Playwright)

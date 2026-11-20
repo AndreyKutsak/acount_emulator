@@ -73,15 +73,8 @@ function matchRows(rows, candidates) {
   return { matched, unmatched };
 }
 
-// Підняти телефон акаунта, зчитати статистику й оновити метрики постів.
-// opts.stopAfter — погасити емулятор після збору (як після публікації).
-async function collectForAccount(account, { stopAfter = true } = {}) {
-  const run = await orchestrator.runForAccount(
-    account,
-    { type: "threadsMetrics" },
-    { stopAfter },
-  );
-  const rows = run.result?.posts || [];
+// Записати зчитані рядки «Статистики» в пости акаунта.
+async function applyRows(account, rows, source = "schedule") {
   const candidates = await recentPublishedEntries(account._id);
   const { matched, unmatched } = matchRows(rows, candidates);
 
@@ -102,7 +95,7 @@ async function collectForAccount(account, { stopAfter = true } = {}) {
   await account.save();
 
   console.log(
-    `${now.toISOString()} [android-metrics] ${account.username}: rows=${rows.length}`,
+    `${now.toISOString()} [android-metrics] ${account.username}: source=${source} rows=${rows.length}`,
     `matched=${matched.length} unmatched=${unmatched.length}`,
   );
   return {
@@ -113,4 +106,52 @@ async function collectForAccount(account, { stopAfter = true } = {}) {
   };
 }
 
-module.exports = { collectForAccount, hasRecentPublished, matchRows, norm };
+// Підняти телефон акаунта, зчитати статистику й оновити метрики постів.
+// opts.stopAfter — погасити емулятор після збору (як після публікації).
+// Після «Статистики» в тому ж сеансі - особисті (якщо увімкнено для акаунта).
+async function collectForAccount(account, { stopAfter = true } = {}) {
+  const run = await orchestrator.runForAccount(
+    account,
+    { type: "threadsMetrics" },
+    { stopAfter, dmAfter: true },
+  );
+  return applyRows(account, run.result?.posts || []);
+}
+
+// Знімати «Статистику» в тому ж сеансі, що й публікацію (телефон уже піднятий).
+// ANDROID_METRICS_AFTER_POST=false вимикає; тоді лишається лише збір шедулера.
+const AFTER_POST = !/^(0|false|no|off)$/i.test(process.env.ANDROID_METRICS_AFTER_POST || "true");
+
+// Записати метрики, зняті одразу після публікації (run - результат
+// orchestrator.runForAccount з metricsAfterPost). Викликати ПІСЛЯ того, як новий
+// пост збережено як published: його рядок у «Статистиці» найновіший, і без нього
+// серед кандидатів цей рядок забрав би старіший пост з тим самим початком тексту.
+// Ніколи не кидає: пост уже вийшов, і збій статистики не має робити його failed.
+async function applyAfterPost(account, run) {
+  const m = run?.metrics;
+  if (!m) return null;
+  if (!m.ok) {
+    console.log(
+      `${new Date().toISOString()} [android-metrics] ${account.username}: after post FAILED: ${m.error}`,
+    );
+    return { error: m.error };
+  }
+  try {
+    return await applyRows(account, m.posts || [], "after-post");
+  } catch (err) {
+    console.error(
+      `${new Date().toISOString()} [android-metrics] ${account.username}: after post save FAILED:`,
+      err.message,
+    );
+    return { error: err.message };
+  }
+}
+
+module.exports = {
+  AFTER_POST,
+  applyAfterPost,
+  collectForAccount,
+  hasRecentPublished,
+  matchRows,
+  norm,
+};

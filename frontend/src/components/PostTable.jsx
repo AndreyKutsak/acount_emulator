@@ -9,6 +9,15 @@ const ENTRY_STATUS = {
   failed: ['Помилка', 'status-offline'],
 };
 
+// Стан поста для кольорової смуги: помилка важливіша за очікування, очікування - за успіх.
+function postState(post) {
+  const statuses = (post.accounts || []).map((a) => a.status);
+  if (statuses.includes('failed')) return 'danger';
+  if (statuses.includes('pending')) return 'warning';
+  if (statuses.length && statuses.every((s) => s === 'published')) return 'success';
+  return 'idle';
+}
+
 // Один акаунт поста: хто публікує, статус і метрики саме цієї публікації.
 function PostAccountRow({ entry }) {
   const account = entry.account || {};
@@ -81,12 +90,20 @@ export default function PostTable({ posts, onDelete, onEdit, onChange }) {
       {posts.map((post) => {
         const expanded = expandedId === post._id;
         const metrics = post.metrics || {};
+        // Поки пост ніде не вийшов, нулі статистики - лише шум.
+        const anyPublished = (post.accounts || []).some((a) => a.status === 'published');
+        const images = post.images || [];
 
         return (
-          <article className="post-card" key={post._id}>
+          <article className="post-card state-edge" data-state={postState(post)} key={post._id}>
             <div className="post-card-main">
               <div className="post-card-topline">
                 <PostStatusBadge status={post.overallStatus} />
+                {post.templateKind && (
+                  <span className={`post-kind post-kind-${post.templateKind}`}>
+                    {{ short: 'Короткий', job: 'Вакансія', free: 'Без шаблону' }[post.templateKind]}
+                  </span>
+                )}
                 <span className="post-schedule">
                   {post.scheduledAt
                     ? `Заплановано: ${formatDate(post.scheduledAt)}`
@@ -96,25 +113,36 @@ export default function PostTable({ posts, onDelete, onEdit, onChange }) {
 
               <p className="post-card-text">{post.text || 'Пост без тексту'}</p>
 
+              {images.length > 0 && (
+                <div className="post-card-photos" aria-label={`Фото: ${images.length}`}>
+                  {images.slice(0, 4).map((src, i) => (
+                    <img key={`${src}-${i}`} src={src} alt="" loading="lazy" />
+                  ))}
+                  {images.length > 4 && <span className="post-card-photos-more">+{images.length - 4}</span>}
+                </div>
+              )}
+
               <div className="post-card-meta">
-                <span>{post.images?.length || 0} медіа</span>
+                <span>{images.length ? `${images.length} фото` : 'без фото'}</span>
                 <span>{post.accounts?.length || 0} акаунтів</span>
               </div>
 
-              <div className="post-card-stats" aria-label="Статистика публікації">
-                <div>
-                  <strong>{metrics.views || 0}</strong>
-                  <span>Перегляди</span>
+              {anyPublished && (
+                <div className="post-card-stats" aria-label="Статистика публікації">
+                  <div>
+                    <strong>{metrics.views || 0}</strong>
+                    <span>Перегляди</span>
+                  </div>
+                  <div>
+                    <strong>{metrics.likes || 0}</strong>
+                    <span>Лайки</span>
+                  </div>
+                  <div>
+                    <strong>{metrics.comments || 0}</strong>
+                    <span>Коментарі</span>
+                  </div>
                 </div>
-                <div>
-                  <strong>{metrics.likes || 0}</strong>
-                  <span>Лайки</span>
-                </div>
-                <div>
-                  <strong>{metrics.comments || 0}</strong>
-                  <span>Коментарі</span>
-                </div>
-              </div>
+              )}
 
               {post.accounts?.length > 0 && (
                 <ul className="post-accounts" aria-label="Публікація по акаунтах">
@@ -128,11 +156,11 @@ export default function PostTable({ posts, onDelete, onEdit, onChange }) {
                 <button className="btn btn-primary btn-sm" onClick={() => onEdit(post)}>
                   Редагувати
                 </button>
-                <button className="btn btn-sm" onClick={() => toggle(post._id)}>
-                  {expanded ? 'Сховати акаунти' : 'Акаунти та публікація'}
+                <button className="btn btn-sm" onClick={() => toggle(post._id)} aria-expanded={expanded}>
+                  {expanded ? 'Сховати акаунти' : 'Акаунти'}
                 </button>
                 <button
-                  className="btn btn-danger btn-sm"
+                  className="btn btn-danger btn-sm post-delete-btn"
                   onClick={() => onDelete(post._id)}
                 >
                   Видалити

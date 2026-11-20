@@ -12,6 +12,13 @@ function extensionFromContentType(contentType) {
 }
 
 async function downloadToTempFile(url) {
+  // Фото, завантажені через форму поста, лежать у backend/uploads: копіюємо з диска.
+  if (String(url).startsWith('/uploads/')) {
+    const src = path.join(__dirname, '../..', 'uploads', path.normalize(url.slice('/uploads/'.length)).replace(/^(\.\.[\\/])+/, ''));
+    const filePath = path.join(os.tmpdir(), `treds-${crypto.randomUUID()}${path.extname(src) || '.jpg'}`);
+    await fs.promises.copyFile(src, filePath);
+    return filePath;
+  }
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to download image (${response.status}): ${url}`);

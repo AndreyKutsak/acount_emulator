@@ -163,12 +163,29 @@ function renderReply(rule, { firstName = "" } = {}) {
     .filter(Boolean);
 }
 
+// Варіант відповіді з ротацією: випадковий серед тих, що не використовувались
+// останніми, тож однакові повідомлення («+») отримують різні відповіді, і повтор
+// буде лише після того, як пройдено всі варіанти. recent - індекси варіантів,
+// найсвіжіший перший. -> { index, parts } або null, якщо відповідей немає.
+function renderReplyVariant(rule, { recent = [], firstName = "" } = {}) {
+  const variants = (rule.replies || [])
+    .map((text, index) => ({ text, index }))
+    .filter((v) => String(v.text).trim());
+  if (!variants.length) return null;
+  const blocked = new Set(recent.slice(0, Math.max(0, variants.length - 1)));
+  const pool = variants.filter((v) => !blocked.has(v.index));
+  const pick = (pool.length ? pool : variants)[Math.floor(Math.random() * (pool.length || variants.length))];
+  const parts = renderReply({ replies: [pick.text] }, { firstName });
+  return { index: pick.index, parts };
+}
+
 module.exports = {
   normalize,
   classify,
   findMatch,
   categoryOf,
   renderReply,
+  renderReplyVariant,
   validateRule,
   matchedKeywords,
 };
