@@ -253,7 +253,7 @@ async function publishDuePosts() {
       }
       // Шаблон вакансії: пост не за шаблоном не публікується, але лишається pending -
       // після виправлення тексту піде сам.
-      const tplReason = account.platform === "threads" && jobTemplate.publishBlockReason(post.text);
+      const tplReason = account.platform === "threads" && jobTemplate.publishBlockReason(post.text, { useTemplate: post.jobTemplate !== false });
       if (tplReason) {
         summary.push({
           postId: post._id,

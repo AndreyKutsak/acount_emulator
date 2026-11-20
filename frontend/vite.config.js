@@ -9,11 +9,13 @@ export default defineConfig({
     // цим ПК). Без цього Vite відповідає «Blocked request. This host is not allowed».
     // Слухаємо й далі лише цей ПК: зовнішній доступ - через тунель / реверс-проксі.
     allowedHosts: true,
+    // xfwd - передати бекенду X-Forwarded-Host/For: у журналі видно, з якої адреси
+    // (тунель, телефон) прийшов запит.
     proxy: {
-      '/api': 'http://localhost:5000',
-      '/uploads': 'http://localhost:5000',
+      '/api': { target: 'http://localhost:5000', changeOrigin: true, xfwd: true },
+      '/uploads': { target: 'http://localhost:5000', changeOrigin: true, xfwd: true },
       // ManyFaces через бекенд - доступний з тієї ж адреси, що й сайт.
-      '/mf': 'http://localhost:5000',
+      '/mf': { target: 'http://localhost:5000', changeOrigin: true, xfwd: true },
     },
   },
 });

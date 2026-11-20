@@ -103,6 +103,30 @@ test("коментарі: не наші акаунти, свіжі, без ві�
   );
 });
 
+test("вакансія впізнається за нашим постом, а не лише за словами", () => {
+  const { jobContextMatcher } = require("../src/services/threadsDm");
+  const isJob = jobContextMatcher([
+    { text: "Працівник складу, Польща\n📍 Czeladź, 10 км від Katowice\n💸 З/п - за результатами співбесіди", jobTemplate: true },
+    { text: "Ой а що там по кримському мосту? Може на фоні цих новин підтримаємо один одного?", jobTemplate: false },
+  ]);
+  // У «Розмовах» видно лише початок поста, часом обрізаний «…».
+  assert.equal(isJob("Працівник складу, Польща"), true);
+  assert.equal(isJob("Працівник складу, Польща 📍 Czeladź, 10 км…"), true);
+  assert.equal(isJob("Ой а що там по кримському мосту?"), false);
+  // Невідомий контекст (наша відповідь під коментарем) - здогад за словами.
+  assert.equal(isJob("Дякую, напишіть мені"), false);
+  assert.equal(isJob("Шукаємо оператора чату"), true);
+
+  const list = [
+    { author: "a", text: "+", context: "Працівник складу, Польща", age_minutes: 30, reply_count: 0 },
+    { author: "b", text: "+", context: "Ой а що там по кримському мосту?", age_minutes: 30, reply_count: 0 },
+  ];
+  assert.deepEqual(
+    eligibleComments(list, { onlyJobPosts: true, isJob }).map((c) => c.author),
+    ["a"],
+  );
+});
+
 test("той самий коментар під різними постами - різні ключі", () => {
   const a = commentKey({ author: "X", text: "+", context: "Пост 1" });
   const b = commentKey({ author: "x", text: "+", context: "Пост 2" });

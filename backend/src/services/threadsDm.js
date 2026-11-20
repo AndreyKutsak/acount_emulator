@@ -14,6 +14,7 @@
 // відправка (failed) повторюється в наступних сеансах до MAX_ATTEMPTS разів.
 
 const SocialAccount = require("../models/SocialAccount");
+const Post = require("../models/Post");
 const ThreadsDmRule = require("../models/ThreadsDmRule");
 const ThreadsDmLog = require("../models/ThreadsDmLog");
 const bridge = require("./androidBridgeService");
@@ -150,7 +151,10 @@ function logFields(d, now) {
 // невдалою публікацію, після якої він іде. log - журнал кроків оркестратора.
 async function handleInbox(account, serial, log = []) {
   const settings = account.dmAutoReply || {};
-  if (!settings.enabled) return null;
+  if (!settings.enabled) {
+    log.push({ step: "threadsDm", skipped: "автовідповіді в особистих вимкнено для акаунта" });
+    return null;
+  }
   const summary = { scanned: 0, replied: 0, failed: 0, noMatch: 0, ignored: 0, skipped: 0 };
   try {
     const folders = settings.includeRequests === false ? ["inbox"] : ["inbox", "requests"];
@@ -269,18 +273,47 @@ async function handleInbox(account, serial, log = []) {
 const commentKey = (c) =>
   `c|${String(c.author).toLowerCase()}|${matcher.normalize(c.context).slice(0, 60)}|${matcher.normalize(c.text).slice(0, 300)}`;
 
+// Початок тексту для порівняння: без регістру й переносів, без «…» в кінці.
+const postPrefix = (s) =>
+  matcher
+    .normalize(s)
+    .replace(/\s*(?:…|\.{3})\s*(?:ще|більше|еще|more)?\s*$/u, "")
+    .trim();
+const MIN_CONTEXT = 8;
+
+// Чи коментар під нашою вакансією. У «Розмовах» видно лише початок нашого поста
+// (контекст), а пости за шаблоном починаються з назви посади («Працівник складу,
+// Польща»), де слів «вакансія», «шукаємо» немає. Тож шукаємо пост акаунта, що
+// так починається, і беремо його позначку jobTemplate (false - пост «про життя»).
+// Не знайшли (відповідь на наш коментар, пост поза панеллю) - здогад за словами.
+// posts: [{ text, jobTemplate }] - опубліковані пости акаунта.
+function jobContextMatcher(posts) {
+  const list = (posts || [])
+    .map((p) => ({ text: postPrefix(p.text), job: p.jobTemplate !== false }))
+    .filter((p) => p.text);
+  return (context) => {
+    const ctx = postPrefix(context);
+    if (ctx.length >= MIN_CONTEXT) {
+      const hits = list.filter((p) => p.text.startsWith(ctx));
+      if (hits.length) return hits.some((p) => p.job);
+    }
+    return isJobPost(context);
+  };
+}
+
 // Які коментарі взагалі розглядати (без бази): не наші акаунти, свіжі, без
-// наявних відповідей (якщо skipAnswered), з текстом.
+// наявних відповідей (якщо skipAnswered), з текстом; з onlyJobPosts - лише під
+// вакансіями (isJob - jobContextMatcher за постами акаунта).
 function eligibleComments(
   comments,
-  { ownUsernames = new Set(), maxAgeHours = 24, skipAnswered = true, onlyJobPosts = false } = {},
+  { ownUsernames = new Set(), maxAgeHours = 24, skipAnswered = true, onlyJobPosts = false, isJob = isJobPost } = {},
 ) {
   return (comments || []).filter((c) => {
     if (!c.author || !String(c.text || "").trim()) return false;
     if (ownUsernames.has(String(c.author).toLowerCase())) return false;
     if (c.age_minutes == null || c.age_minutes > maxAgeHours * 60) return false;
     if (skipAnswered && c.reply_count > 0) return false;
-    if (onlyJobPosts && !isJobPost(c.context)) return false;
+    if (onlyJobPosts && !isJob(c.context)) return false;
     return true;
   });
 }
@@ -294,19 +327,33 @@ function shouldRunComments(behavior, result, opts = {}) {
 // Перевірити коментарі й відповісти. Ніколи не кидає (як handleInbox).
 async function handleComments(account, serial, log = []) {
   const settings = account.commentAutoReply || {};
-  if (!settings.enabled) return null;
+  if (!settings.enabled) {
+    log.push({ step: "threadsComments", skipped: "автовідповіді на коментарі вимкнено для акаунта" });
+    return null;
+  }
   const summary = { scanned: 0, replied: 0, failed: 0, noMatch: 0, ignored: 0, skipped: 0 };
   try {
     const scan = await bridge.threadsCommentsScan(serial);
     const own = await SocialAccount.find({ platform: "threads" }).select("username");
     const ownUsernames = new Set(own.map((a) => String(a.username).toLowerCase()));
     ownUsernames.add(String(account.username).toLowerCase());
-    const comments = eligibleComments(scan?.comments, {
+    const onlyJobPosts = settings.onlyJobPosts !== false;
+    const posts = onlyJobPosts
+      ? await Post.find({ accounts: { $elemMatch: { account: account._id, status: "published" } } })
+          .sort({ _id: -1 })
+          .limit(300)
+          .select("text jobTemplate")
+          .lean()
+      : [];
+    const found = scan?.comments || [];
+    const comments = eligibleComments(found, {
       ownUsernames,
       maxAgeHours: settings.maxAgeHours ?? 24,
       skipAnswered: settings.skipAnswered !== false,
-      onlyJobPosts: settings.onlyJobPosts !== false,
+      onlyJobPosts,
+      isJob: jobContextMatcher(posts),
     });
+    summary.found = found.length;
     summary.scanned = comments.length;
     const chats = comments.map((c) => ({
       username: c.author,
@@ -412,6 +459,7 @@ module.exports = {
   handleComments,
   planReplies,
   eligibleComments,
+  jobContextMatcher,
   shouldRunDm,
   shouldRunComments,
   messageKey,

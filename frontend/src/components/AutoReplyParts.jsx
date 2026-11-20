@@ -387,7 +387,7 @@ function RulesCard({ api, accountId, accounts }) {
                 <tr key={rule._id} style={rule.enabled ? undefined : { opacity: 0.55 }}>
                   <td data-label="Правило">
                     <span className="status-badge auth-unknown">{categoryOf(rule)}</span>
-                    <div>{rule.name}</div>
+                    <div className="cell-title">{rule.name}</div>
                     <div className="muted" style={{ fontSize: 12 }}>
                       пріоритет {rule.priority}
                       {rule.oncePerUser && ' · один раз на людину'}
@@ -419,11 +419,11 @@ function RulesCard({ api, accountId, accounts }) {
                       </div>
                     )}
                   </td>
-                  <td data-label="Акаунти" style={{ fontSize: 13 }}>
+                  <td data-label="Акаунти" className="td-inline" style={{ fontSize: 13 }}>
                     {rule.accounts.length === 0 ? 'усі' : rule.accounts.map(accountName).join(', ')}
                   </td>
-                  <td data-label="Спрацювало">{rule.usageCount}</td>
-                  <td data-label="Увімк.">
+                  <td data-label="Спрацювало" className="td-inline">{rule.usageCount}</td>
+                  <td data-label="Увімк." className="td-inline">
                     <input
                       type="checkbox"
                       checked={rule.enabled}

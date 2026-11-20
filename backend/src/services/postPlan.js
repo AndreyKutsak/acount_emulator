@@ -118,7 +118,7 @@ async function dailyPlan(dateKey) {
 
 // Повна перевірка поста для Threads: текст + дублікати + денний ліміт.
 // accountIds — усі акаунти поста; перевіряються лише threads-акаунти.
-async function validatePost({ text, accountIds = [], scheduledAt = null, postId = null }) {
+async function validatePost({ text, accountIds = [], scheduledAt = null, postId = null, useTemplate = true }) {
   const accounts = accountIds.length
     ? await SocialAccount.find({ _id: { $in: accountIds } }, "platform username").lean()
     : [];
@@ -132,7 +132,7 @@ async function validatePost({ text, accountIds = [], scheduledAt = null, postId 
   if (!threads.length) return result;
 
   // Обов'язковий шаблон вакансії для всіх Threads-постів.
-  if (jobTemplate.REQUIRED && String(text || "").trim()) {
+  if (jobTemplate.REQUIRED && useTemplate !== false && String(text || "").trim()) {
     const tpl = jobTemplate.checkJobTemplate(text);
     result.errors.push(...tpl.errors);
     result.warnings.push(...tpl.warnings);

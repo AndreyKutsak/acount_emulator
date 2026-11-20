@@ -23,16 +23,37 @@ test("короткий шаблон без гачка чи без «куди й�
 
 test("вакансія у шаблоні з телефоном - без попередження про схему", () => {
   const t = `Комірник у Rozetka
-📍 Склад, Вінниця
-💸 27-32 тис. на місяць
+📍 Склад
 📅 Графік 2/2, 08:00-20:00
 Офіційне працевлаштування
 Хто шукає стабільну роботу?
 📞 +380934336563
-#РоботаВінниця`;
+#Робота`;
   const r = checkJobTemplate(t);
   assert.deepEqual(codes(r), []);
   assert.deepEqual(r.warnings, []);
+});
+
+test("зарплата й місто в пості - лише попередження, не помилка", () => {
+  const t = `Комірник у Rozetka
+📍 Склад, Вінниця
+💸 27-32 тис. на місяць
+📅 Графік 2/2
+Офіційне працевлаштування
+Хто шукає роботу?
+Посилання в шапці профілю
+#РоботаВінниця`;
+  const r = checkJobTemplate(t);
+  assert.deepEqual(codes(r), []);
+  const w = r.warnings.map((x) => x.code);
+  assert.ok(w.includes("tpl_salary_given"));
+  assert.ok(w.includes("tpl_city_given"));
+});
+
+test("шаблон без зарплати й міста чистий", () => {
+  const r = checkJobTemplate(TEMPLATE);
+  assert.ok(!/\d{2}\s?\d{3}|Вінниц/.test(TEMPLATE));
+  assert.ok(!r.warnings.some((x) => x.code === "tpl_salary_given" || x.code === "tpl_city_given"));
 });
 
 test("робота вдома без телефону - попередження", () => {
@@ -52,7 +73,7 @@ test("бракує зарплати, графіка й тегу", () => {
 Хто шукає роботу?
 Посилання в шапці профілю`;
   const r = codes(checkJobTemplate(t));
-  for (const c of ["tpl_salary", "tpl_schedule", "tpl_tag"]) assert.ok(r.includes(c), c);
+  for (const c of ["tpl_schedule", "tpl_tag"]) assert.ok(r.includes(c), c);
 });
 
 test("зарплата в першому рядку і контакт не в кінці", () => {

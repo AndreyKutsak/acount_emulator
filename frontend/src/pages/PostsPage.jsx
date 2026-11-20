@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchPosts, createPost, updatePost, deletePost } from '../api/posts';
 import { errorMessage } from '../api/client';
 import PostForm from '../components/PostForm';
@@ -72,6 +72,16 @@ export default function PostsPage() {
   const [editingPost, setEditingPost] = useState(null);
   const [planKey, setPlanKey] = useState(0);
   const [wordsOpen, setWordsOpen] = useState(false);
+  const createRef = useRef(null);
+
+  // Відкрили форму - показати її й поставити курсор у текст (на телефоні форма
+  // інакше лишалась нижче першого екрана).
+  useEffect(() => {
+    if (!creating || !createRef.current) return;
+    createRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const t = setTimeout(() => createRef.current?.querySelector('textarea')?.focus({ preventScroll: true }), 350);
+    return () => clearTimeout(t);
+  }, [creating]);
 
   const view = useListView('posts', posts, {
     search: (p) => p.text,
@@ -92,20 +102,34 @@ export default function PostsPage() {
     sorts: SORTS,
   });
 
-  const load = async () => {
+  // quiet - фонове оновлення: не чіпає повідомлення про помилку, яке людина читає.
+  const load = async ({ quiet = false } = {}) => {
     try {
       setPosts(await fetchPosts());
       setPlanKey((key) => key + 1);
-      setError(null);
+      if (!quiet) setError(null);
       return true;
     } catch (err) {
-      setError('Не вдалося завантажити пости');
+      if (!quiet) setError('Не вдалося завантажити пости');
       return false;
     }
   };
 
+  // Статуси змінюються самі (планувальник публікує, збирає статистику), тож список
+  // оновлюється кожні 20 секунд і щойно вкладка знову стає видимою (повернулись у
+  // браузер на телефоні). Поки сторінка схована - не смикаємо сервер.
   useEffect(() => {
     load();
+    const refresh = () => {
+      if (document.visibilityState === 'visible') load({ quiet: true });
+    };
+    const timer = setInterval(refresh, 20000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCreate = async (data) => {
@@ -166,6 +190,26 @@ export default function PostsPage() {
         </div>
       </div>
 
+      {creating && (
+        <section className="card post-create-card" ref={createRef}>
+          <div className="post-section-heading">
+            <div>
+              <h3>Новий пост</h3>
+              <p>Текст, фото, час і акаунти для публікації</p>
+            </div>
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="Закрити форму створення"
+              onClick={() => setCreating(false)}
+            >
+              ×
+            </button>
+          </div>
+          <PostForm onCreate={handleCreate} />
+        </section>
+      )}
+
       {wordsOpen && <PostWordsPanel onClose={() => setWordsOpen(false)} />}
 
       {error && <p className="error">{error}</p>}
@@ -190,26 +234,6 @@ export default function PostsPage() {
       </div>
 
       <DailyPostPlan refreshKey={planKey} />
-
-      {creating && (
-        <section className="card post-create-card">
-          <div className="post-section-heading">
-            <div>
-              <h3>Новий пост</h3>
-              <p>Текст, фото, час і акаунти для публікації</p>
-            </div>
-            <button
-              type="button"
-              className="modal-close"
-              aria-label="Закрити форму створення"
-              onClick={() => setCreating(false)}
-            >
-              ×
-            </button>
-          </div>
-          <PostForm onCreate={handleCreate} />
-        </section>
-      )}
 
       <section className="posts-list-section">
         <div className="section-heading">

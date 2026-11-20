@@ -511,7 +511,7 @@ exports.publishPostForAccount = async (req, res) => {
         .json({ message: "Account not linked to this post" });
 
     if (account.platform === "threads") {
-      const tplReason = jobTemplate.publishBlockReason(text ?? post.text);
+      const tplReason = jobTemplate.publishBlockReason(text ?? post.text, { useTemplate: post.jobTemplate !== false });
       if (tplReason) return res.status(400).json({ message: tplReason });
       // Емуляторний шлях: нативний застосунок Threads в Android-емуляторі (міст).
       if (ANDROID_THREADS_POSTING) {
